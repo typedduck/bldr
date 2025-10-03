@@ -35,6 +35,8 @@ const _bldr_log_suffix_t _bldr_log_suffix_newline = {
     .length = 1,
 };
 
+static bldr_log_level_t _bldr_log_level = BLDR_LOG_LEVEL_DEFAULT;
+
 static void _bldr_log_message_write(const char *buffer, size_t length);
 
 /*
@@ -42,7 +44,7 @@ static void _bldr_log_message_write(const char *buffer, size_t length);
  */
 
 void bldr_log_cmd(const bldr_cmd_t *cmd) {
-    if (BLDR_LOG_LEVEL_MIN == BLDR_LOG_OFF || !bldr_cmd_valid(cmd))
+    if (_bldr_log_level == BLDR_LOG_OFF || !bldr_cmd_valid(cmd))
         return;
 
     int written = 0;
@@ -84,8 +86,10 @@ void bldr_log_fddump(int fd) {
     bldr_log_dump(_bldr_message_buffer, written);
 }
 
+bldr_log_level_t bldr_log_get_level() { return _bldr_log_level; }
+
 void bldr_log_message(bldr_log_level_t level, const char *fmt, ...) {
-    if (level < BLDR_LOG_LEVEL_MIN)
+    if (level > _bldr_log_level)
         return;
 
     va_list args;
@@ -96,7 +100,7 @@ void bldr_log_message(bldr_log_level_t level, const char *fmt, ...) {
 
 void bldr_log_message_va(bldr_log_level_t level, const char *fmt,
                          va_list args) {
-    if (level < BLDR_LOG_LEVEL_MIN)
+    if (level > _bldr_log_level)
         return;
 
     int written = 0;
@@ -134,6 +138,13 @@ void bldr_log_message_va(bldr_log_level_t level, const char *fmt,
 
     // Let _bldr_message_write handle newlines and truncation
     _bldr_log_message_write(_bldr_message_buffer, total_length);
+}
+
+bldr_log_level_t bldr_log_set_level(bldr_log_level_t level) {
+    bldr_log_level_t result = _bldr_log_level;
+
+    _bldr_log_level = MIN(MAX(level, BLDR_LOG_OFF), BLDR_LOG_INFO);
+    return result;
 }
 
 void bldr_log_stderr(bldr_proc_handle_t *handle) {

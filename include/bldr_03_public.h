@@ -447,19 +447,21 @@ int bldr_file_walk_opt(const char *base_path, const char *pattern,
     bldr_log_message(BLDR_LOG_ERROR, fmt, ##__VA_ARGS__)
 
 typedef enum {
-    BLDR_LOG_INFO,
-    BLDR_LOG_WARN,
-    BLDR_LOG_ERROR,
     BLDR_LOG_OFF,
+    BLDR_LOG_ERROR,
+    BLDR_LOG_WARN,
+    BLDR_LOG_INFO,
 } bldr_log_level_t;
 
 void bldr_log_cmd(const bldr_cmd_t *cmd) __attribute((nonnull(1)));
 void bldr_log_dump(const char *buffer, size_t length) __attribute((nonnull(1)));
 void bldr_log_fddump(int fd);
+bldr_log_level_t bldr_log_get_level();
 void bldr_log_message(bldr_log_level_t level, const char *fmt, ...)
     __attribute__((format(printf, 2, 3), nonnull(2)));
 void bldr_log_message_va(bldr_log_level_t level, const char *fmt, va_list args)
     __attribute__((nonnull(2)));
+bldr_log_level_t bldr_log_set_level(bldr_log_level_t level);
 void bldr_log_stderr(bldr_proc_handle_t *handle) __attribute((nonnull(1)));
 void bldr_log_stdout(bldr_proc_handle_t *handle) __attribute((nonnull(1)));
 void bldr_log_time(bool local);

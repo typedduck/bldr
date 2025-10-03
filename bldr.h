@@ -117,8 +117,8 @@ static_assert(BLDR_COMMAND_PROCS_MIN <= BLDR_COMMAND_PROCS_MAX,
 #define BLDR_FILE_PATH_MAX (4096)
 #endif
 
-#ifndef BLDR_LOG_LEVEL_MIN
-#define BLDR_LOG_LEVEL_MIN BLDR_LOG_INFO
+#ifndef BLDR_LOG_LEVEL_DEFAULT
+#define BLDR_LOG_LEVEL_DEFAULT BLDR_LOG_INFO
 #endif
 
 #ifndef BLDR_LOG_OUT
@@ -599,19 +599,21 @@ int bldr_file_walk_opt(const char *base_path, const char *pattern,
     bldr_log_message(BLDR_LOG_ERROR, fmt, ##__VA_ARGS__)
 
 typedef enum {
-    BLDR_LOG_INFO,
-    BLDR_LOG_WARN,
-    BLDR_LOG_ERROR,
     BLDR_LOG_OFF,
+    BLDR_LOG_ERROR,
+    BLDR_LOG_WARN,
+    BLDR_LOG_INFO,
 } bldr_log_level_t;
 
 void bldr_log_cmd(const bldr_cmd_t *cmd) __attribute((nonnull(1)));
 void bldr_log_dump(const char *buffer, size_t length) __attribute((nonnull(1)));
 void bldr_log_fddump(int fd);
+bldr_log_level_t bldr_log_get_level();
 void bldr_log_message(bldr_log_level_t level, const char *fmt, ...)
     __attribute__((format(printf, 2, 3), nonnull(2)));
 void bldr_log_message_va(bldr_log_level_t level, const char *fmt, va_list args)
     __attribute__((nonnull(2)));
+bldr_log_level_t bldr_log_set_level(bldr_log_level_t level);
 void bldr_log_stderr(bldr_proc_handle_t *handle) __attribute((nonnull(1)));
 void bldr_log_stdout(bldr_proc_handle_t *handle) __attribute((nonnull(1)));
 void bldr_log_time(bool local);
@@ -2353,6 +2355,8 @@ const _bldr_log_suffix_t _bldr_log_suffix_newline = {
     .length = 1,
 };
 
+static bldr_log_level_t _bldr_log_level = BLDR_LOG_LEVEL_DEFAULT;
+
 static void _bldr_log_message_write(const char *buffer, size_t length);
 
 /*
@@ -2360,7 +2364,7 @@ static void _bldr_log_message_write(const char *buffer, size_t length);
  */
 
 void bldr_log_cmd(const bldr_cmd_t *cmd) {
-    if (BLDR_LOG_LEVEL_MIN == BLDR_LOG_OFF || !bldr_cmd_valid(cmd))
+    if (_bldr_log_level == BLDR_LOG_OFF || !bldr_cmd_valid(cmd))
         return;
 
     int written = 0;
@@ -2402,8 +2406,10 @@ void bldr_log_fddump(int fd) {
     bldr_log_dump(_bldr_message_buffer, written);
 }
 
+bldr_log_level_t bldr_log_get_level() { return _bldr_log_level; }
+
 void bldr_log_message(bldr_log_level_t level, const char *fmt, ...) {
-    if (level < BLDR_LOG_LEVEL_MIN)
+    if (level > _bldr_log_level)
         return;
 
     va_list args;
@@ -2414,7 +2420,7 @@ void bldr_log_message(bldr_log_level_t level, const char *fmt, ...) {
 
 void bldr_log_message_va(bldr_log_level_t level, const char *fmt,
                          va_list args) {
-    if (level < BLDR_LOG_LEVEL_MIN)
+    if (level > _bldr_log_level)
         return;
 
     int written = 0;
@@ -2452,6 +2458,13 @@ void bldr_log_message_va(bldr_log_level_t level, const char *fmt,
 
     // Let _bldr_message_write handle newlines and truncation
     _bldr_log_message_write(_bldr_message_buffer, total_length);
+}
+
+bldr_log_level_t bldr_log_set_level(bldr_log_level_t level) {
+    bldr_log_level_t result = _bldr_log_level;
+
+    _bldr_log_level = MIN(MAX(level, BLDR_LOG_OFF), BLDR_LOG_INFO);
+    return result;
 }
 
 void bldr_log_stderr(bldr_proc_handle_t *handle) {
@@ -3618,9 +3631,11 @@ static int _bldr_validate_platform_assumptions(void) {
 #define log_dump bldr_log_dump
 #define log_error bldr_log_error
 #define log_fddump bldr_log_fddump
+#define log_get_level bldr_log_get_level
+#define log_info bldr_log_info
 #define log_message bldr_log_message
 #define log_message_va bldr_log_message_va
-#define log_info bldr_log_info
+#define log_set_level bldr_log_set_level
 #define log_stderr bldr_log_stderr
 #define log_stdout bldr_log_stdout
 #define log_time bldr_log_time
@@ -3692,6 +3707,6 @@ static int _bldr_validate_platform_assumptions(void) {
 /*
 CREDITS:
 
-Partialy based and inspired by the work of:
+Partially based and inspired by the work of:
 - https://github.com/tsoding/nob.h
 */

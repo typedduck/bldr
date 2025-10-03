@@ -198,9 +198,11 @@
 #define log_dump bldr_log_dump
 #define log_error bldr_log_error
 #define log_fddump bldr_log_fddump
+#define log_get_level bldr_log_get_level
+#define log_info bldr_log_info
 #define log_message bldr_log_message
 #define log_message_va bldr_log_message_va
-#define log_info bldr_log_info
+#define log_set_level bldr_log_set_level
 #define log_stderr bldr_log_stderr
 #define log_stdout bldr_log_stdout
 #define log_time bldr_log_time
