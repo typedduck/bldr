@@ -330,8 +330,6 @@ typedef struct bldr_cmd_procs_t {
     pid_t proc_group;
 } bldr_cmd_procs_t;
 
-bldr_cmd_t *bldr_cmd_clone_in(const bldr_cmd_t *cmd, bldr_arena_t *arena)
-    __attribute__((nonnull(1, 2)));
 void bldr_cmd_procs_done(bldr_cmd_procs_t *procs);
 bool bldr_cmd_procs_wait(bldr_cmd_procs_t *procs, size_t timeout_sec)
     __attribute__((nonnull(1)));
@@ -341,6 +339,8 @@ int bldr_cmd_run_opt(const bldr_cmd_t *cmd, bldr_cmd_options_t options)
 static inline int bldr_cmd_append_many(bldr_cmd_t *cmd, size_t count,
                                        const char **items)
     __attribute__((nonnull(1, 3)));
+bldr_cmd_t *bldr_cmd_clone_in(const bldr_cmd_t *cmd, bldr_arena_t *arena)
+    __attribute__((nonnull(1, 2)));
 static inline void bldr_cmd_done(bldr_cmd_t *cmd);
 static inline void bldr_cmd_print(const bldr_cmd_t *cmd)
     __attribute__((nonnull(1)));
@@ -439,19 +439,38 @@ int bldr_file_walk_opt(const char *base_path, const char *pattern,
  * Logger declarations
  */
 
+typedef enum {
+    BLDR_LOG_OFF = 0,
+    BLDR_LOG_ERROR = 1,
+    BLDR_LOG_WARN = 2,
+    BLDR_LOG_INFO = 3,
+} bldr_log_level_t;
+
+#define BLDR_LOG_OFF 0
+#define BLDR_LOG_ERROR 1
+#define BLDR_LOG_WARN 2
+#define BLDR_LOG_INFO 3
+
+#if BLDR_LOG_LEVEL_MAX >= BLDR_LOG_INFO
 #define bldr_log_info(fmt, ...)                                                \
     bldr_log_message(BLDR_LOG_INFO, fmt, ##__VA_ARGS__)
+#else
+#define bldr_log_info(fmt, ...)
+#endif
+
+#if BLDR_LOG_LEVEL_MAX >= BLDR_LOG_WARN
 #define bldr_log_warn(fmt, ...)                                                \
     bldr_log_message(BLDR_LOG_WARN, fmt, ##__VA_ARGS__)
+#else
+#define bldr_log_warn(fmt, ...)
+#endif
+
+#if BLDR_LOG_LEVEL_MAX >= BLDR_LOG_ERROR
 #define bldr_log_error(fmt, ...)                                               \
     bldr_log_message(BLDR_LOG_ERROR, fmt, ##__VA_ARGS__)
-
-typedef enum {
-    BLDR_LOG_OFF,
-    BLDR_LOG_ERROR,
-    BLDR_LOG_WARN,
-    BLDR_LOG_INFO,
-} bldr_log_level_t;
+#else
+#define bldr_log_error(fmt, ...)
+#endif
 
 void bldr_log_cmd(const bldr_cmd_t *cmd) __attribute((nonnull(1)));
 void bldr_log_dump(const char *buffer, size_t length) __attribute((nonnull(1)));

@@ -59,6 +59,10 @@ static_assert(BLDR_COMMAND_PROCS_MIN <= BLDR_COMMAND_PROCS_MAX,
 #define BLDR_LOG_LEVEL_DEFAULT BLDR_LOG_INFO
 #endif
 
+#ifndef BLDR_LOG_LEVEL_MAX
+#define BLDR_LOG_LEVEL_MAX BLDR_LOG_INFO
+#endif
+
 #ifndef BLDR_LOG_OUT
 #define BLDR_LOG_OUT (stderr)
 #endif
