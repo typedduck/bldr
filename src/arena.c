@@ -106,8 +106,8 @@ int bldr_arena_rewind(bldr_arena_t *arena, size_t checkpoint) {
         return BLDR_ERR_ALIGN;
     }
 
-    bldr_log_info("arena (%p) rewind from %zu to %zu", arena->vmem.base,
-                  current_length, checkpoint_length);
+    bldr_log_debug("arena (%p) rewind from %zu to %zu", arena->vmem.base,
+                   current_length, checkpoint_length);
     uint8_t *base_ptr = (uint8_t *)bldr_vmem_base_ptr(&arena->vmem);
     arena->next = base_ptr + checkpoint_length;
 
@@ -119,7 +119,7 @@ size_t bldr_arena_save(bldr_arena_t *arena) {
     uintptr_t base = (uintptr_t)bldr_vmem_base_ptr(&arena->vmem);
     uint32_t hash = (uint32_t)((base ^ length ^ bldr_arena_magic()) & 0xFFFF);
 
-    bldr_log_info("arena (%p) checkpoint at %zu", arena->vmem.base, length);
+    bldr_log_debug("arena (%p) checkpoint at %zu", arena->vmem.base, length);
     // Pack: upper 16 bits = hash, lower 48 bits = length
     return ((size_t)hash << 48) | (length & 0xFFFFFFFFFFFF);
 }

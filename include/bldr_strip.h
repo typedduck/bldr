@@ -187,6 +187,7 @@
 #endif // BLDR_STRIP_PREFIX_FILE
 
 #ifdef BLDR_STRIP_PREFIX_LOGGER
+#define LOG_DEBUG BLDR_LOG_DEBUG
 #define LOG_INFO BLDR_LOG_INFO
 #define LOG_WARN BLDR_LOG_WARN
 #define LOG_ERROR BLDR_LOG_ERROR
@@ -195,6 +196,7 @@
 #define log_level_t bldr_log_level_t
 
 #define log_cmd bldr_log_cmd
+#define log_debug bldr_log_debug
 #define log_dump bldr_log_dump
 #define log_error bldr_log_error
 #define log_fddump bldr_log_fddump

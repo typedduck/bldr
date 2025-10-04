@@ -122,7 +122,7 @@ static_assert(BLDR_COMMAND_PROCS_MIN <= BLDR_COMMAND_PROCS_MAX,
 #endif
 
 #ifndef BLDR_LOG_LEVEL_MAX
-#define BLDR_LOG_LEVEL_MAX BLDR_LOG_WARN
+#define BLDR_LOG_LEVEL_MAX BLDR_LOG_INFO
 #endif
 
 #ifndef BLDR_LOG_OUT
@@ -600,12 +600,21 @@ typedef enum {
     BLDR_LOG_ERROR = 1,
     BLDR_LOG_WARN = 2,
     BLDR_LOG_INFO = 3,
+    BLDR_LOG_DEBUG = 4,
 } bldr_log_level_t;
 
 #define BLDR_LOG_OFF 0
 #define BLDR_LOG_ERROR 1
 #define BLDR_LOG_WARN 2
 #define BLDR_LOG_INFO 3
+#define BLDR_LOG_DEBUG 4
+
+#if BLDR_LOG_LEVEL_MAX >= BLDR_LOG_DEBUG
+#define bldr_log_debug(fmt, ...)                                               \
+    bldr_log_message(BLDR_LOG_DEBUG, fmt, ##__VA_ARGS__)
+#else
+#define bldr_log_debug(fmt, ...)
+#endif
 
 #if BLDR_LOG_LEVEL_MAX >= BLDR_LOG_INFO
 #define bldr_log_info(fmt, ...)                                                \
@@ -1082,8 +1091,8 @@ int bldr_arena_rewind(bldr_arena_t *arena, size_t checkpoint) {
         return BLDR_ERR_ALIGN;
     }
 
-    bldr_log_info("arena (%p) rewind from %zu to %zu", arena->vmem.base,
-                  current_length, checkpoint_length);
+    bldr_log_debug("arena (%p) rewind from %zu to %zu", arena->vmem.base,
+                   current_length, checkpoint_length);
     uint8_t *base_ptr = (uint8_t *)bldr_vmem_base_ptr(&arena->vmem);
     arena->next = base_ptr + checkpoint_length;
 
@@ -1095,7 +1104,7 @@ size_t bldr_arena_save(bldr_arena_t *arena) {
     uintptr_t base = (uintptr_t)bldr_vmem_base_ptr(&arena->vmem);
     uint32_t hash = (uint32_t)((base ^ length ^ bldr_arena_magic()) & 0xFFFF);
 
-    bldr_log_info("arena (%p) checkpoint at %zu", arena->vmem.base, length);
+    bldr_log_debug("arena (%p) checkpoint at %zu", arena->vmem.base, length);
     // Pack: upper 16 bits = hash, lower 48 bits = length
     return ((size_t)hash << 48) | (length & 0xFFFFFFFFFFFF);
 }
@@ -2451,6 +2460,9 @@ void bldr_log_message_va(bldr_log_level_t level, const char *fmt,
 
     // Add log level prefix
     switch (level) {
+    case BLDR_LOG_DEBUG:
+        written = snprintf(_bldr_message_buffer, available, "[DEBUG] ");
+        break;
     case BLDR_LOG_INFO:
         written = snprintf(_bldr_message_buffer, available, "[INFO ] ");
         break;
@@ -2486,7 +2498,7 @@ void bldr_log_message_va(bldr_log_level_t level, const char *fmt,
 bldr_log_level_t bldr_log_set_level(bldr_log_level_t level) {
     bldr_log_level_t result = _bldr_log_level;
 
-    _bldr_log_level = MIN(MAX(level, BLDR_LOG_OFF), BLDR_LOG_INFO);
+    _bldr_log_level = MIN(MAX(level, BLDR_LOG_OFF), BLDR_LOG_DEBUG);
     return result;
 }
 
@@ -3643,6 +3655,7 @@ static int _bldr_validate_platform_assumptions(void) {
 #endif // BLDR_STRIP_PREFIX_FILE
 
 #ifdef BLDR_STRIP_PREFIX_LOGGER
+#define LOG_DEBUG BLDR_LOG_DEBUG
 #define LOG_INFO BLDR_LOG_INFO
 #define LOG_WARN BLDR_LOG_WARN
 #define LOG_ERROR BLDR_LOG_ERROR
@@ -3651,6 +3664,7 @@ static int _bldr_validate_platform_assumptions(void) {
 #define log_level_t bldr_log_level_t
 
 #define log_cmd bldr_log_cmd
+#define log_debug bldr_log_debug
 #define log_dump bldr_log_dump
 #define log_error bldr_log_error
 #define log_fddump bldr_log_fddump

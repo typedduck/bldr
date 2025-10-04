@@ -108,6 +108,9 @@ void bldr_log_message_va(bldr_log_level_t level, const char *fmt,
 
     // Add log level prefix
     switch (level) {
+    case BLDR_LOG_DEBUG:
+        written = snprintf(_bldr_message_buffer, available, "[DEBUG] ");
+        break;
     case BLDR_LOG_INFO:
         written = snprintf(_bldr_message_buffer, available, "[INFO ] ");
         break;
@@ -143,7 +146,7 @@ void bldr_log_message_va(bldr_log_level_t level, const char *fmt,
 bldr_log_level_t bldr_log_set_level(bldr_log_level_t level) {
     bldr_log_level_t result = _bldr_log_level;
 
-    _bldr_log_level = MIN(MAX(level, BLDR_LOG_OFF), BLDR_LOG_INFO);
+    _bldr_log_level = MIN(MAX(level, BLDR_LOG_OFF), BLDR_LOG_DEBUG);
     return result;
 }
 

@@ -444,12 +444,21 @@ typedef enum {
     BLDR_LOG_ERROR = 1,
     BLDR_LOG_WARN = 2,
     BLDR_LOG_INFO = 3,
+    BLDR_LOG_DEBUG = 4,
 } bldr_log_level_t;
 
 #define BLDR_LOG_OFF 0
 #define BLDR_LOG_ERROR 1
 #define BLDR_LOG_WARN 2
 #define BLDR_LOG_INFO 3
+#define BLDR_LOG_DEBUG 4
+
+#if BLDR_LOG_LEVEL_MAX >= BLDR_LOG_DEBUG
+#define bldr_log_debug(fmt, ...)                                               \
+    bldr_log_message(BLDR_LOG_DEBUG, fmt, ##__VA_ARGS__)
+#else
+#define bldr_log_debug(fmt, ...)
+#endif
 
 #if BLDR_LOG_LEVEL_MAX >= BLDR_LOG_INFO
 #define bldr_log_info(fmt, ...)                                                \
