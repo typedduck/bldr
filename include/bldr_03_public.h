@@ -299,8 +299,8 @@ void bldr_build_yourself_many(int argc, char **argv, const char *source_path,
         ((bldr_proc_handle_t[]){__VA_ARGS__}))
 #define bldr_cmd_reset(cmd) bldr_cmd_resize(cmd, 0)
 #define bldr_cmd_rewind(cmd, n) bldr_cmd_resize(cmd, n)
-#define bldr_cmd_run(cmd, handle, ...)                                         \
-    bldr_cmd_run_opt(cmd, handle, (bldr_cmd_options_t){__VA_ARGS__})
+#define bldr_cmd_run(cmd, ...)                                                 \
+    bldr_cmd_run_opt(cmd, (bldr_cmd_options_t){__VA_ARGS__})
 
 typedef struct bldr_cmd_t {
     const char **items;
