@@ -128,7 +128,7 @@ Customize behavior via preprocessor defines before including `bldr.h`:
 #define BLDR_ARENA_CAPACITY (8 * 1024 * 1024) // Default arena size
 #define BLDR_OOM_ABORT true                   // Abort on out-of-memory
 #define BLDR_LOG_LEVEL_DEFAULT BLDR_LOG_INFO  // Default log level
-#define BLDR_LOG_LEVEL_MAX                    // Max log level compiled
+#define BLDR_LOG_LEVEL_MAX BLDR_LOG_INFO      // Max log level compiled
 #define BLDR_STRIP_PREFIX                     // Remove bldr_ prefix
 ```
 
