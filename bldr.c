@@ -58,20 +58,11 @@ constexpr char stb_text_5[] = "\n#ifdef __cplusplus\n}\n#endif\n\n"
 constexpr char stb_text_6[] = "*/\n";
 
 static int build_stb_library(arena_t *arena) {
-    constexpr size_t buffer_size = 4096;
     int result = OK;
     size_t cp_headers = 0;
     size_t cp_sources = 0;
     // Paths defining the stb-library
     DEFER(strings_t paths, strs_done) = {0};
-    // buffer for file contents
-    char *buffer = arena_alloc(arena, buffer_size);
-    CHECK_NULLPTR(buffer);
-    // Options for file concatination
-    file_cat_opt_t options = (file_cat_opt_t){
-        .buffer = buffer,
-        .buffer_size = buffer_size,
-    };
 
     // Collect paths that define the stb-library, headers first then sources
     AND_THEN(result, strs_walk(&paths, arena, "include", "bldr_??_*.h",
@@ -105,6 +96,14 @@ static int build_stb_library(arena_t *arena) {
     }
 
     // Write the stb-library
+    constexpr size_t buffer_size = 4096;
+    char *buffer = arena_alloc(arena, buffer_size);
+    CHECK_NULLPTR(buffer);
+    file_cat_opt_t options = (file_cat_opt_t){
+        .buffer = buffer,
+        .buffer_size = buffer_size,
+    };
+
     AND_THEN(result, file_printf(out, stb_text_1));
     AND_THEN(result, file_cat_opt(out, "LICENSE", options));
     AND_THEN(result, file_printf(out, stb_text_2));
