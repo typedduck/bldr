@@ -99,7 +99,7 @@ int bldr_vmem_init(bldr_vmem_t *vmem, size_t capacity) {
 
     const int mmap_flags = _bldr_get_platform_mmap_flags();
 
-    memset(vmem, 0, sizeof(bldr_vmem_t));
+    memset(vmem, 0, sizeof(*vmem));
     vmem->capacity = bldr_page_align(capacity);
     vmem->base = mmap(NULL, vmem->capacity, PROT_NONE, mmap_flags, -1, 0);
 
