@@ -21,8 +21,8 @@ static_assert(sizeof(void *) == 8, "Not a 64-bit system");
  * Configuration options
  */
 
-#ifndef BLDR_ARENA_CAPACITY
-#define BLDR_ARENA_CAPACITY (8 * 1024 * 1024)
+#ifndef BLDR_ARENA_DEFAULT_CAPACITY
+#define BLDR_ARENA_DEFAULT_CAPACITY (8 * 1024 * 1024)
 #endif
 
 #ifndef BLDR_ARRAY_CAPACITY_MIN
