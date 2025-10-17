@@ -1,3 +1,4 @@
+// -*- compile-command: "gcc -s -O2 -DNDEBUG -o bldr bldr.c"; -*-
 #define BLDR_IMPLEMENTATION
 #define BLDR_STRIP_PREFIX
 
@@ -10,7 +11,6 @@ constexpr char bldr_source[] = "bldr.c";
 static int build_stb_library(arena_t *arena);
 
 int main(int argc, char **argv) {
-    log_set_level(LOG_WARN);
     build_yourself(argc, argv, bldr_source, bldr_header);
 
     DEFER(arena_t arena, arena_done) = {0};
