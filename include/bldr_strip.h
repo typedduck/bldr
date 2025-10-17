@@ -8,6 +8,7 @@
 #define BLDR_STRIP_PREFIX_FILE
 #define BLDR_STRIP_PREFIX_PROCESS
 #define BLDR_STRIP_PREFIX_STRINGS
+#define BLDR_STRIP_PREFIX_TIMER
 #define BLDR_STRIP_PREFIX_VMEMORY
 #endif // BLDR_STRIP_PREFIX
 
@@ -59,6 +60,7 @@
 #define cmd_procs_append bldr_cmd_procs_append
 #define cmd_procs_append_many bldr_cmd_procs_append_many
 #define cmd_procs_done bldr_cmd_procs_done
+#define cmd_procs_sync bldr_cmd_procs_sync
 #define cmd_procs_wait bldr_cmd_procs_wait
 #define cmd_reserve bldr_cmd_reserve
 #define cmd_reset bldr_cmd_reset
@@ -250,6 +252,15 @@
 #define strs_walk bldr_strs_walk
 #define strs_walk_opt bldr_strs_walk_opt
 #endif // BLDR_STRIP_PREFIX_STRINGS
+
+#ifdef BLDR_STRIP_PREFIX_TIMER
+#define timer_t bldr_timer_t
+
+#define timer_init bldr_timer_init
+#define timer_init_now bldr_timer_init_now
+#define timer_sleep bldr_timer_sleep
+#define timer_start bldr_timer_start
+#endif // BLDR_STRIP_PREFIX_TIMER
 
 #ifdef BLDR_STRIP_PREFIX_VMEMORY
 #define vmem_t bldr_vmem_t

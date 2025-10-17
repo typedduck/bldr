@@ -149,7 +149,7 @@ typedef enum {
 extern const char bldr_empty_string[];
 
 /*
- * General functions declarations
+ * General function declarations
  */
 
 #define bldr_align_type(size, type) bldr_align_to((size), alignof(type))
@@ -318,7 +318,7 @@ typedef int (*bldr_proc_hook_t)(const bldr_cmd_t *cmd)
 typedef struct {
     bldr_cmd_procs_t *async;
     size_t timeout_sec;
-    size_t max_processes;
+    size_t max_processes; // when async != NULL
     const char *working_dir;
     bldr_proc_hook_t hook;
 } bldr_cmd_options_t;
@@ -331,7 +331,10 @@ typedef struct bldr_cmd_procs_t {
 } bldr_cmd_procs_t;
 
 void bldr_cmd_procs_done(bldr_cmd_procs_t *procs);
-bool bldr_cmd_procs_wait(bldr_cmd_procs_t *procs, size_t timeout_sec)
+int bldr_cmd_procs_sync(bldr_cmd_procs_t *procs, size_t timeout_ms)
+    __attribute__((nonnull(1)));
+int bldr_cmd_procs_wait(bldr_cmd_procs_t *procs, bldr_proc_handle_t *handle_out,
+                        int *exit_code, size_t timeout_ms)
     __attribute__((nonnull(1)));
 int bldr_cmd_run_opt(const bldr_cmd_t *cmd, bldr_cmd_options_t options)
     __attribute__((nonnull(1)));
@@ -560,7 +563,7 @@ static inline int bldr_proc_read_stdout(bldr_proc_handle_t *handle,
     __attribute__((nonnull(1, 4)));
 
 /*
- * String declarations
+ * Strings declarations
  */
 
 #define bldr_strs_append(strs, ...)                                            \
@@ -622,3 +625,20 @@ static inline int bldr_strs_resize(bldr_strings_t *strings, size_t size)
     __attribute__((nonnull(1)));
 static inline size_t bldr_strs_save(bldr_strings_t *strings)
     __attribute__((nonnull(1)));
+
+/*
+ * Timer declarations
+ */
+
+typedef struct {
+    double start;
+    double timeout;
+    long sleep;
+} bldr_timer_t;
+
+int bldr_timer_init(bldr_timer_t *timer, long timeout_ms)
+    __attribute__((nonnull(1)));
+int bldr_timer_init_now(bldr_timer_t *timer, long timeout_ms)
+    __attribute__((nonnull(1)));
+int bldr_timer_sleep(bldr_timer_t *timer) __attribute__((nonnull(1)));
+void bldr_timer_start(bldr_timer_t *timer) __attribute__((nonnull(1)));

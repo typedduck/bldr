@@ -122,9 +122,6 @@ int bldr_proc_exec_async_opt(const bldr_cmd_t *cmd, bldr_proc_handle_t *handle,
         if (options.no_redirect == false)
             _bldr_proc_close_pipes(pipes, false); // Close child ends
 
-        if (options.proc_group == 0)
-            options.proc_group = pid;
-
         // Set up handle before any potential error paths
         if (options.no_redirect == false) {
             handle->stdin_fd = pipes[0][1];  // Write end of stdin pipe
@@ -201,11 +198,13 @@ int bldr_proc_terminate(bldr_proc_handle_t *handle, bool force) {
         handle->is_running = false;
         return BLDR_OK;
     }
+    if (force)
+        bldr_log_warn("forcing process (%d) to terminate", handle->pid);
 
     int signal = force ? SIGKILL : SIGTERM;
     if (kill(handle->pid, signal) == -1) {
-        if (errno == ESRCH) {
-            // Process already terminated
+        if (errno == ESRCH || signal == SIGKILL) {
+            // Process already terminated or was killed
             handle->is_running = false;
             return BLDR_OK;
         }
@@ -220,7 +219,6 @@ int bldr_proc_terminate(bldr_proc_handle_t *handle, bool force) {
         if (bldr_proc_is_running(handle->pid)) {
             // Don't check error here - process might have exited between
             // checks
-            bldr_log_warn("forcing process (%d) to terminate", handle->pid);
             kill(handle->pid, SIGKILL);
         }
     }
@@ -237,7 +235,7 @@ int bldr_proc_wait(bldr_proc_handle_t *handle, int *exit_code,
     }
 
     int status;
-    pid_t result = _bldr_proc_wait_timeout(handle->pid, &status, timeout_ms);
+    int result = _bldr_proc_wait_timeout(handle->pid, &status, timeout_ms);
 
     if (result != BLDR_OK) {
         // Try to kill the child process if timeout occurred
@@ -487,13 +485,8 @@ static int _bldr_proc_wait_timeout(pid_t pid, int *status, size_t timeout_ms) {
         return BLDR_OK;
     }
 
-    double start_time = bldr_time_now();
-    const double timeout_time = (double)timeout_ms / 1000.0;
-
-    // Adaptive polling: start with shorter intervals, increase gradually
-    const long min_sleep = 1000;  // 1ms minimum
-    const long max_sleep = 50000; // 50ms maximum
-    long current_sleep = min_sleep;
+    bldr_timer_t timer;
+    bldr_timer_init_now(&timer, timeout_ms);
 
     while (true) {
         pid_t result = waitpid(pid, status, WNOHANG);
@@ -506,29 +499,12 @@ static int _bldr_proc_wait_timeout(pid_t pid, int *status, size_t timeout_ms) {
             // Process has terminated
             return BLDR_OK;
         } else if (result == 0) {
-            // Process is still running, check timeout
-            double elapsed_time = bldr_time_now() - start_time;
+            int result = bldr_timer_sleep(&timer);
 
-            if (elapsed_time >= timeout_time) {
+            if (result == BLDR_ERR_TIMEOUT) {
                 bldr_log_warn("process %d timed out", pid);
                 return BLDR_ERR_TIMEOUT;
             }
-            // For the last second, use shorter sleep intervals for
-            // responsiveness
-            if (elapsed_time >= timeout_time - 1) {
-                current_sleep = min_sleep;
-            }
-
-            // Sleep with adaptive interval (exponential backoff with cap)
-            if (usleep(current_sleep) == -1 && errno == EINTR) {
-                // If interrupted by signal, just continue - don't treat as
-                // error
-                continue;
-            }
-
-            // Gradually increase sleep time to reduce CPU usage with 1.5x
-            // multiplier
-            current_sleep = MIN((current_sleep * 3) / 2, max_sleep);
         }
     }
 }

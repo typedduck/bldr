@@ -66,8 +66,100 @@ bldr_cmd_t *bldr_cmd_clone_in(const bldr_cmd_t *cmd, bldr_arena_t *arena) {
 void bldr_cmd_procs_done(bldr_cmd_procs_t *procs) {
     BLDR_TODO("Implement bldr_cmd_procs_done");
 }
-bool bldr_cmd_procs_wait(bldr_cmd_procs_t *procs, size_t timeout_sec) {
-    BLDR_TODO("Implement bldr_cmd_procs_wait");
+
+int bldr_cmd_procs_sync(bldr_cmd_procs_t *procs, size_t timeout_ms) {
+    if (procs->length == 0) {
+        return BLDR_OK;
+    }
+
+    int last_error = BLDR_OK;
+
+    // Wait for all processes
+    while (procs->length > 0) {
+        int exit_code = -1;
+        bldr_proc_handle_t handle;
+        int result =
+            bldr_cmd_procs_wait(procs, &handle, &exit_code, timeout_ms);
+
+        last_error = result != BLDR_OK ? result : last_error;
+        bldr_proc_handle_done(&handle);
+    }
+
+    return last_error;
+}
+
+int bldr_cmd_procs_wait(bldr_cmd_procs_t *procs, bldr_proc_handle_t *handle_out,
+                        int *exit_code, size_t timeout_ms) {
+    if (procs->length == 0)
+        return BLDR_OK;
+    if (procs->length == 1) {
+        bldr_proc_handle_t *handle = &procs->items[0];
+        int result = bldr_proc_wait(handle, exit_code, timeout_ms);
+
+        if (handle_out)
+            memcpy(handle_out, handle, sizeof(*handle_out));
+        else
+            bldr_proc_handle_done(handle);
+
+        procs->length--;
+        return result;
+    }
+
+    // Multiple processes - wait on any in the process group
+    if (procs->proc_group <= 0) {
+        bldr_log_error("attempt to wait on invalid process group id");
+        return BLDR_ERR_ARGS;
+    }
+
+    bldr_timer_t timer;
+    bldr_timer_init_now(&timer, timeout_ms);
+
+    while (true) {
+        // Use waitpid with -pgid to wait for any process in the group
+        int status;
+        pid_t pid = waitpid(-procs->proc_group, &status, WNOHANG);
+
+        if (pid > 0) {
+            // Found a completed process - find it in procs
+            for (uint32_t i = 0; i < procs->length; i++) {
+                if (procs->items[i].pid == pid) {
+                    bldr_proc_handle_t *handle = &procs->items[i];
+                    handle->is_running = false;
+
+                    if (handle_out)
+                        memcpy(handle_out, handle, sizeof(*handle_out));
+                    else
+                        bldr_proc_handle_done(handle);
+
+                    // Remove from array by shifting remaining elements
+                    memmove(&procs->items[i], &procs->items[i + 1],
+                            (procs->length - i - 1) *
+                                sizeof(bldr_proc_handle_t));
+                    procs->length--;
+
+                    return BLDR_OK;
+                }
+            }
+
+            // Process not in our array - shouldn't happen
+            bldr_log_warn(
+                "waitpid returned unexpected pid %d, not in process list", pid);
+            continue;
+        } else if (pid == -1) {
+            if (errno == ECHILD && procs->length > 0)
+                bldr_log_warn("process group (%d) has no more children, %d "
+                              "processes left",
+                              procs->proc_group, procs->length);
+            bldr_log_error("waitpid failed (%s)", strerror(errno));
+            return BLDR_ERR_WAIT;
+        }
+
+        if (bldr_timer_sleep(&timer) == BLDR_ERR_TIMEOUT) {
+            bldr_log_warn("timeout waiting for processes in group %d",
+                          procs->proc_group);
+            return BLDR_ERR_TIMEOUT;
+        }
+    }
 }
 
 int bldr_cmd_run_opt(const bldr_cmd_t *cmd, bldr_cmd_options_t options) {
@@ -83,13 +175,16 @@ int bldr_cmd_run_opt(const bldr_cmd_t *cmd, bldr_cmd_options_t options) {
                     BLDR_COMMAND_PROCS_MAX),
                 BLDR_COMMAND_PROCS_MIN);
 
-        while (options.async->length >= max_processes) {
-            // Wait or terminate after timeout
-            bool removed =
-                bldr_cmd_procs_wait(options.async, options.timeout_sec);
+        while (options.async->length &&
+               options.async->length >= max_processes) {
+            uint32_t length = options.async->length;
+            int result = bldr_cmd_procs_wait(options.async, NULL, NULL,
+                                             options.timeout_sec);
 
-            if (!removed) // If no process was removed, exit loop
-                break;
+            // if an error occured and no process was removed, return error to
+            // avoid infinite loop
+            if (result != BLDR_OK && length == options.async->length)
+                return result;
         }
 
         BLDR_DEFER(bldr_proc_handle_t handle, bldr_proc_handle_done);
