@@ -59,7 +59,8 @@ int bldr_arena_init(bldr_arena_t *arena, size_t capacity) {
 
     if (capacity == 0)
         capacity = BLDR_ARENA_DEFAULT_CAPACITY;
-    BLDR_UNWRAP(bldr_vmem_init(&vmem, capacity));
+
+    BLDR_UNWRAP_ERROR(bldr_vmem_init(&vmem, capacity));
     bldr_arena_init_in(arena, vmem);
     return BLDR_OK;
 }
