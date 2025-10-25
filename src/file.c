@@ -596,8 +596,7 @@ static int _bldr_file_walk_recursive(const char *pattern,
         }
 
         bool is_directory = S_ISDIR(file_stat.st_mode);
-        const bool flags =
-            FNM_PATHNAME | (options.no_escape ? FNM_NOESCAPE : 0);
+        const int flags = FNM_PATHNAME | (options.no_escape ? FNM_NOESCAPE : 0);
         bool matches_pattern = fnmatch(pattern, entry->d_name, flags) == 0;
 
         // Handle directories
