@@ -93,8 +93,13 @@ int bldr_vmem_init(bldr_vmem_t *vmem, size_t capacity) {
     if (result != BLDR_OK) {
         return result;
     }
+    if (capacity == 0) {
+        bldr_log_error("capacity is zero");
+        return BLDR_ERR_ARGS;
+    }
     if (capacity > SIZE_MAX - bldr_page_size()) {
-        BLDR_OOM_ERROR("capacity %zu too large for page alignment", capacity);
+        bldr_log_error("capacity %zu too large for page alignment", capacity);
+        return BLDR_ERR_ARGS;
     }
 
     const int mmap_flags = _bldr_get_platform_mmap_flags();
@@ -180,7 +185,7 @@ static int _bldr_validate_platform_assumptions(void) {
         // Verify page size is power of 2
         if ((page_size & (page_size - 1)) != 0) {
             bldr_log_error("page size %zu is not a power of 2", page_size);
-            return BLDR_ERR_SYNTAX;
+            return BLDR_ERR_PLATFORM;
         }
 
         // Warn about unusual page sizes
