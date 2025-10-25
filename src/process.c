@@ -55,20 +55,20 @@ int bldr_proc_exec_opt(const bldr_cmd_t *cmd, int *exit_code_ret,
     BLDR_AND_THEN(result,
                   bldr_proc_wait(&handle, &exit_code, options.timeout_ms));
 
-    if (exit_code_ret)
-        *exit_code_ret = exit_code;
-    if (exit_code != BLDR_EXIT_OK)
-        bldr_log_warn("process %d exited with code %d", handle.pid, exit_code);
-    if (result != BLDR_OK)
-        return result;
     if (options.no_redirect == false) {
         if (options.log_stdout)
             bldr_log_stdout(&handle);
         if (options.log_stderr)
             bldr_log_stderr(&handle);
     }
+    if (exit_code_ret)
+        *exit_code_ret = exit_code;
+    if (exit_code != BLDR_EXIT_OK)
+        bldr_log_warn("process %d exited with code %d", handle.pid, exit_code);
 
-    return result;
+    return result != BLDR_OK           ? result
+           : exit_code != BLDR_EXIT_OK ? BLDR_ERR_EXEC
+                                       : BLDR_OK;
 }
 
 int bldr_proc_exec_async_opt(const bldr_cmd_t *cmd, bldr_proc_handle_t *handle,
