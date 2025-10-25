@@ -9,7 +9,7 @@ static inline size_t bldr_align_to(size_t value, size_t alignment) {
 }
 
 static inline char *bldr_arg_shift(int *argc, char ***argv) {
-    assert(argc != NULL && *argc > 0 && argv != NULL);
+    assert(argc != NULL && *argc > 0 && *argv != NULL);
     char *arg = **argv;
     (*argc)--, (*argv)++;
     return arg;
