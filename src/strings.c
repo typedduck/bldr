@@ -73,7 +73,7 @@ int bldr_strs_glob_opt(bldr_strings_t *strings, bldr_arena_t *arena,
         return BLDR_ERR_NOT_FOUND;
     }
 
-    BLDR_UNWRAP(bldr_strs_reserve(strings, strings->length + path_count));
+    BLDR_UNWRAP_ERROR(bldr_strs_reserve(strings, strings->length + path_count));
 
     char *buffer = bldr_arena_alloc(arena, total_size);
     BLDR_CHECK_NULLPTR(buffer);
@@ -130,8 +130,8 @@ int bldr_strs_walk_opt(bldr_strings_t *strings, bldr_arena_t *arena,
         .data = &walk_data,
     };
 
-    BLDR_UNWRAP(bldr_file_walk_opt(base_path, pattern, _bldr_strs_walk_callback,
-                                   walk_options));
+    BLDR_UNWRAP_ERROR(bldr_file_walk_opt(
+        base_path, pattern, _bldr_strs_walk_callback, walk_options));
     if (options.no_sort == false)
         bldr_strs_sort(strings);
 
@@ -167,6 +167,6 @@ static int _bldr_strs_walk_callback(const char *path, void *void_data) {
     char *copied_path = bldr_arena_strdup(data->arena, path);
 
     BLDR_CHECK_NULLPTR(copied_path);
-    BLDR_UNWRAP(bldr_strs_append(data->strings, copied_path));
+    BLDR_UNWRAP_ERROR(bldr_strs_append(data->strings, copied_path));
     return BLDR_OK;
 }

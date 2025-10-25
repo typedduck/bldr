@@ -23,7 +23,7 @@ int bldr_array_append_many(bldr_array_t *array, size_t item_size, size_t count,
                            array->length, count);
         }
 
-        BLDR_UNWRAP(
+        BLDR_UNWRAP_ERROR(
             bldr_array_reserve(array, item_size, array->length + count));
         memcpy(array->items + (item_size * array->length), items,
                item_size * count);

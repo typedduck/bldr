@@ -21,6 +21,13 @@
         abort();                                                               \
     } while (0)
 #define BLDR_UNUSED(value) (void)(value)
+#define BLDR_UNWRAP_ERROR(caller)                                              \
+    do {                                                                       \
+        int result = (caller);                                                 \
+        if (result != BLDR_OK) {                                               \
+            return result;                                                     \
+        }                                                                      \
+    } while (0)
 
 #if BLDR_OOM_ABORT
 #define BLDR_CHECK_NULLPTR(ptr)
@@ -40,8 +47,13 @@
         bldr_log_error("OOM: " msg, ##__VA_ARGS__);                            \
         exit(BLDR_EXIT_NOMEM);                                                 \
     } while (0)
-#define BLDR_UNWRAP(caller) (caller)
-#define BLDR_UNWRAP_NULL(caller) (caller)
+#define BLDR_UNWRAP_NULL(caller)                                               \
+    do {                                                                       \
+        int result = (caller);                                                 \
+        if (result != BLDR_OK) {                                               \
+            exit(BLDR_EXIT_NOMEM);                                             \
+        }                                                                      \
+    } while (0)
 #else
 #define BLDR_CHECK_NULLPTR(ptr)                                                \
     if ((ptr == NULL))                                                         \
@@ -63,13 +75,6 @@
     do {                                                                       \
         bldr_log_error("OOM: " msg, ##__VA_ARGS__);                            \
         return NULL;                                                           \
-    } while (0)
-#define BLDR_UNWRAP(caller)                                                    \
-    do {                                                                       \
-        int result = (caller);                                                 \
-        if (result != BLDR_OK) {                                               \
-            return result;                                                     \
-        }                                                                      \
     } while (0)
 #define BLDR_UNWRAP_NULL(caller)                                               \
     do {                                                                       \

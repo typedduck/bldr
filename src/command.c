@@ -200,7 +200,7 @@ int bldr_cmd_run_opt(const bldr_cmd_t *cmd, bldr_cmd_options_t options) {
         if (options.async->proc_group == 0)
             options.async->proc_group = handle.pid;
 
-        BLDR_UNWRAP(bldr_cmd_procs_append(options.async, handle));
+        BLDR_UNWRAP_ERROR(bldr_cmd_procs_append(options.async, handle));
 
         return BLDR_OK;
     } else {

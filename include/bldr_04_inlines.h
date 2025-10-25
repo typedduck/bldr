@@ -61,8 +61,8 @@ static inline int bldr_array_resize(bldr_array_t *array, size_t item_size,
 static inline int bldr_cmd_append_many(bldr_cmd_t *cmd, size_t count,
                                        const char **items) {
     assert(!cmd->sealed && !cmd->static_mem);
-    BLDR_UNWRAP(bldr_array_append_many((bldr_array_t *)cmd, sizeof(char *),
-                                       count, items));
+    BLDR_UNWRAP_ERROR(bldr_array_append_many((bldr_array_t *)cmd,
+                                             sizeof(char *), count, items));
     return bldr_cmd_resize(cmd, cmd->length);
 }
 
@@ -101,9 +101,10 @@ static inline int bldr_cmd_reserve(bldr_cmd_t *cmd, size_t requested) {
 static inline int bldr_cmd_resize(bldr_cmd_t *cmd, size_t size) {
     assert(!cmd->sealed && !cmd->static_mem);
 
-    BLDR_UNWRAP(
+    BLDR_UNWRAP_ERROR(
         bldr_array_reserve((bldr_array_t *)cmd, sizeof(char *), size + 1));
-    BLDR_UNWRAP(bldr_array_resize((bldr_array_t *)cmd, sizeof(char *), size));
+    BLDR_UNWRAP_ERROR(
+        bldr_array_resize((bldr_array_t *)cmd, sizeof(char *), size));
 
     cmd->items[size] = NULL;
     return BLDR_OK;
