@@ -33,6 +33,29 @@ static_assert(sizeof(void *) == 8, "Not a 64-bit system");
 #define BLDR_BUFFER_SIZE (4096)
 #endif
 
+#ifndef BLDR_CC_COMPILER
+#define BLDR_CC_COMPILER "cc"
+#endif
+
+#ifndef BLDR_CC_FLAGS_COMMON
+#define BLDR_CC_FLAGS_COMMON                                                   \
+    "-std=c2x", "-Wall", "-Wextra", "-Wpedantic", "-Werror"
+#endif
+
+#ifndef BLDR_CC_FLAGS_RELEASE
+#define BLDR_CC_FLAGS_RELEASE                                                  \
+    BLDR_CC_FLAGS_COMMON, "-s", "-O2", "-DNDEBUG", "-flto"
+#endif
+
+#ifndef BLDR_CC_FLAGS_DEBUG
+#define BLDR_CC_FLAGS_DEBUG                                                    \
+    BLDR_CC_FLAGS_COMMON, "-g", "-DDEBUG", "-fsanitize=address,undefined"
+#endif
+
+#ifndef BLDR_CC_FLAGS_VALGRIND
+#define BLDR_CC_FLAGS_VALGRIND BLDR_CC_FLAGS_COMMON, "-g", "-DDEBUG"
+#endif
+
 #ifndef BLDR_COMMAND_ARGS_MAX
 #define BLDR_COMMAND_ARGS_MAX (1024)
 #endif
@@ -85,7 +108,7 @@ static_assert(BLDR_COMMAND_PROCS_MIN <= BLDR_COMMAND_PROCS_MAX,
 
 #ifndef BLDR_REBUILD_CMD
 #define BLDR_REBUILD_CMD(binary_path, source_path)                             \
-    "gcc", "-s", "-O2", "-DNDEBUG", "-o", binary_path, source_path
+    BLDR_CC_COMPILER, BLDR_CC_FLAGS_RELEASE, "-o", binary_path, source_path
 #endif
 
 #ifdef BLDR_THREAD_SAFE
