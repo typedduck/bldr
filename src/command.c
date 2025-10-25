@@ -179,7 +179,7 @@ int bldr_cmd_run_opt(const bldr_cmd_t *cmd, bldr_cmd_options_t options) {
                options.async->length >= max_processes) {
             uint32_t length = options.async->length;
             int result = bldr_cmd_procs_wait(options.async, NULL, NULL,
-                                             options.timeout_sec);
+                                             options.timeout_ms);
 
             // if an error occured and no process was removed, return error to
             // avoid infinite loop
@@ -204,9 +204,10 @@ int bldr_cmd_run_opt(const bldr_cmd_t *cmd, bldr_cmd_options_t options) {
 
         return BLDR_OK;
     } else {
-        int result = bldr_proc_exec(cmd, NULL, .hook = options.hook,
-                                    .log_command = true, .log_stderr = true,
-                                    .timeout_ms = options.timeout_sec,
+        int result =
+            bldr_proc_exec(cmd, NULL, .hook = options.hook, .log_command = true,
+                           .log_stderr = true, .log_stdout = true,
+                           .timeout_ms = options.timeout_ms,
                                     .working_dir = options.working_dir);
 
         return result;

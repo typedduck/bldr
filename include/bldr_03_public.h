@@ -322,7 +322,7 @@ typedef int (*bldr_proc_hook_t)(const bldr_cmd_t *cmd)
 
 typedef struct {
     bldr_cmd_procs_t *async;
-    size_t timeout_sec;
+    size_t timeout_ms;
     size_t max_processes; // when async != NULL
     const char *working_dir;
     bldr_proc_hook_t hook;
