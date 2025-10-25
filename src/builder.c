@@ -19,7 +19,7 @@
     do {                                                                       \
         int result = (caller);                                                 \
         if (result != BLDR_OK) {                                               \
-            exit(BLDR_EXIT_REBUILD);                                           \
+            exit(BLDR_EXIT_FAIL);                                              \
         }                                                                      \
     } while (0)
 #endif
@@ -75,7 +75,7 @@ void bldr_build_yourself_many(int argc, char **argv, const char *source_path,
         binary_path, source_paths.length, source_paths.items);
 
     if (rebuild_needed < 0) {
-        exit(BLDR_EXIT_REBUILD);
+        exit(BLDR_EXIT_FAIL);
     }
     if (!rebuild_needed) {
         return;
@@ -94,10 +94,10 @@ void bldr_build_yourself_many(int argc, char **argv, const char *source_path,
 
 #if !BLDR_OOM_ABORT
     if (!old_binary_path)
-        exit(BLDR_EXIT_REBUILD);
+        exit(BLDR_EXIT_FAIL);
 #endif
     if (bldr_file_rename(binary_path, old_binary_path) != BLDR_OK)
-        exit(BLDR_EXIT_REBUILD);
+        exit(BLDR_EXIT_FAIL);
 
     // ===== Rebuild the binary ================================================
     BLDR_DEFER(bldr_cmd_t cmd, bldr_cmd_done) = {0};
@@ -114,11 +114,11 @@ void bldr_build_yourself_many(int argc, char **argv, const char *source_path,
         if (exit_code != 0) {
             bldr_log_error("%s failed with exit code %d", cmd.items[0],
                            exit_code);
-            exit(BLDR_EXIT_REBUILD);
+            exit(BLDR_EXIT_FAIL);
         }
         bldr_log_info("%s exited successful", cmd.items[0]);
     } else {
-        exit(BLDR_EXIT_REBUILD);
+        exit(BLDR_EXIT_FAIL);
     }
 
     // ===== Execute the rebuild binary ========================================
@@ -130,7 +130,7 @@ void bldr_build_yourself_many(int argc, char **argv, const char *source_path,
     exit_code = 0;
     result = bldr_proc_exec(&cmd, &exit_code, .no_redirect = true);
     if (result != BLDR_OK)
-        exit(BLDR_EXIT_REBUILD);
+        exit(BLDR_EXIT_FAIL);
 
     exit(exit_code);
 }

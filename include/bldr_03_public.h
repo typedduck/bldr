@@ -126,11 +126,11 @@ typedef enum {
     BLDR_EXIT_OK = 0, // Successful exit
 
     // Error exit of main process
-    BLDR_EXIT_REBUILD = 1, // Rebuild failed
-    BLDR_EXIT_NOMEM = 2,   // Out of memory occured
-    BLDR_EXIT_IO = 3,      // I/O error
-    BLDR_EXIT_RAND = 4,    // Failed to generate random number
-    BLDR_EXIT_TIME = 5,    // Failed to get system time
+    BLDR_EXIT_FAIL = 1,  // Execution generally failed
+    BLDR_EXIT_NOMEM = 2, // Out of memory occured
+    BLDR_EXIT_IO = 3,    // I/O error
+    BLDR_EXIT_RAND = 4,  // Failed to generate random number
+    BLDR_EXIT_TIME = 5,  // Failed to get system time
 
     // Error exit of child process
     BLDR_EXIT_CHILD = 128,         // Forked child process exited with error
