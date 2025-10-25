@@ -53,11 +53,11 @@ int bldr_needs_rebuild_many(const char *output_path, size_t input_paths_count,
             return BLDR_ERR_FILE_STAT;
         }
         if (statbuf.st_mtime > output_path_time) {
-            return 1;
+            return BLDR_TRUE;
         }
     }
 
-    return 0;
+    return BLDR_FALSE;
 }
 
 void bldr_build_yourself_many(int argc, char **argv, const char *source_path,
@@ -77,7 +77,7 @@ void bldr_build_yourself_many(int argc, char **argv, const char *source_path,
     if (rebuild_needed < 0) {
         exit(BLDR_EXIT_FAIL);
     }
-    if (!rebuild_needed) {
+    if (rebuild_needed == BLDR_FALSE) {
         return;
     }
 
