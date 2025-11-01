@@ -183,10 +183,7 @@ static inline size_t bldr_vmem_available(bldr_vmem_t *vmem) {
     return vmem->capacity - vmem->length;
 }
 
-static inline void *bldr_vmem_base_ptr(bldr_vmem_t *vmem) {
-    assert(vmem->base != NULL); // not initialized
-    return vmem->base;
-}
+static inline void *bldr_vmem_base_ptr(bldr_vmem_t *vmem) { return vmem->base; }
 
 static inline size_t bldr_vmem_capacity(bldr_vmem_t *vmem) {
     return vmem->capacity;
@@ -201,6 +198,5 @@ static inline size_t bldr_vmem_length(bldr_vmem_t *vmem) {
 }
 
 static inline void *bldr_vmem_top_ptr(bldr_vmem_t *vmem) {
-    assert(vmem->base != NULL); // not initialized
     return vmem->base + vmem->length;
 }
