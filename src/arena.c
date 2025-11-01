@@ -128,16 +128,13 @@ size_t bldr_arena_save(bldr_arena_t *arena) {
 }
 
 char *bldr_arena_sprintf(bldr_arena_t *arena, const char *format, ...) {
-    static const char empty_string[] = "";
-
     va_list args;
     va_start(args, format);
     int length = vsnprintf(NULL, 0, format, args);
     va_end(args);
 
-    if (length <= 0) {
-        return (char *)empty_string;
-    }
+    if (length <= 0)
+        return bldr_arena_strdup(arena, "");
 
     char *result = bldr_arena_alloc(arena, length + 1);
     BLDR_HANDLE_NULL(result);
