@@ -23,12 +23,12 @@ static int _bldr_validate_platform_assumptions(void);
 int bldr_vmem_commit(bldr_vmem_t *vmem, size_t size) {
     if (size == 0)
         return BLDR_OK;
-    if (size > vmem->capacity)
-        BLDR_OOM_ERROR("requested size %zu larger than capacity %zu", size,
-                       vmem->capacity);
 
     size = bldr_page_align(size);
 
+    if (size > vmem->capacity)
+        BLDR_OOM_ERROR("requested size %zu larger than capacity %zu", size,
+                       vmem->capacity);
     if (SIZE_MAX - vmem->length < size)
         BLDR_OOM_ERROR("requested size %zu would overflow current length %zu",
                        size, vmem->length);
@@ -44,7 +44,7 @@ int bldr_vmem_commit(bldr_vmem_t *vmem, size_t size) {
     if (result != 0) {
         vmem->error = errno;
         BLDR_OOM_ERROR("failed to commit %zu bytes of virtual memory (%s)",
-                       size, strerror(errno));
+                       size, strerror(vmem->error));
     }
 
     vmem->length = new_length;
@@ -53,13 +53,10 @@ int bldr_vmem_commit(bldr_vmem_t *vmem, size_t size) {
 }
 
 int bldr_vmem_decommit(bldr_vmem_t *vmem, size_t size) {
-    assert(vmem != NULL);
-    if (size == 0) {
+    if (size == 0)
         return BLDR_OK;
-    }
 
     size = bldr_page_align(size);
-
     if (size > vmem->length)
         BLDR_OOM_ERROR("decommit of %zu bytes exceeds committed virtual "
                        "memory of %zu bytes",
@@ -73,7 +70,7 @@ int bldr_vmem_decommit(bldr_vmem_t *vmem, size_t size) {
         vmem->error = errno;
         BLDR_OOM_ERROR(
             "failed to decommit %zu bytes in virtual memory of %zu bytes (%s)",
-            size, vmem->length, strerror(errno));
+            size, vmem->length, strerror(vmem->error));
     }
 
     vmem->length = new_length;
@@ -90,9 +87,9 @@ void bldr_vmem_done(bldr_vmem_t *vmem) {
 
 int bldr_vmem_init(bldr_vmem_t *vmem, size_t capacity) {
     int result = _bldr_validate_platform_assumptions();
-    if (result != BLDR_OK) {
+    if (result != BLDR_OK)
         return result;
-    }
+
     if (capacity == 0) {
         bldr_log_error("capacity is zero");
         return BLDR_ERR_ARGS;
@@ -111,7 +108,7 @@ int bldr_vmem_init(bldr_vmem_t *vmem, size_t capacity) {
     if (vmem->base == MAP_FAILED) {
         vmem->error = errno;
         BLDR_OOM_ERROR("failed to reserve %zu bytes of virtual memory (%s)",
-                       capacity, strerror(errno));
+                       capacity, strerror(vmem->error));
     }
 
     vmem->original.base = vmem->base;
