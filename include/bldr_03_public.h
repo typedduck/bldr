@@ -154,6 +154,16 @@ typedef enum {
 extern const char bldr_empty_string[];
 
 /*
+ * Forward declarations
+ */
+
+typedef struct {
+    const char **items;
+    uint32_t length;
+    uint32_t capacity;
+} bldr_strings_t;
+
+/*
  * General function declarations
  */
 
@@ -363,6 +373,66 @@ static inline int bldr_cmd_procs_append_many(bldr_cmd_procs_t *procs,
                                              size_t count,
                                              bldr_proc_handle_t *items)
     __attribute__((nonnull(1, 3)));
+
+/*
+ * Compiler declarations
+ */
+
+#define bldr_cc_compile(src_path, obj_path, ...)                               \
+    bldr_cc_compile_opt(src_path, obj_path,                                    \
+                        (bldr_cc_compile_opt_t){__VA_ARGS__})
+
+typedef struct {
+    bldr_cmd_t *cmd;
+} bldr_cc_compile_opt_t;
+
+int bldr_cc_compile_opt(const char *src_path, const char *obj_path,
+                        const bldr_cc_compile_opt_t options)
+    __attribute((nonnull(1, 2)));
+
+/*
+ * Dependencies declarations
+ */
+
+#define bldr_deps_append(deps, ...)                                            \
+    bldr_deps_append_many(                                                     \
+        deps, (sizeof((const char *[]){__VA_ARGS__}) / sizeof(const char *)),  \
+        ((const char *[]){__VA_ARGS__}))
+#define bldr_deps_read(arena, dep_path, deps, ...)                             \
+    bldr_deps_read_opt(arena, dep_path, deps,                                  \
+                       (bldr_deps_read_opt_t){__VA_ARGS__})
+#define bldr_deps_reset(deps) bldr_deps_resize(deps, 0)
+#define bldr_deps_rewind(deps, n) bldr_deps_resize(deps, n)
+
+typedef struct {
+    bldr_strings_t dependencies;
+    const char *target;
+    bool static_mem;
+} bldr_deps_t;
+
+typedef struct {
+    char *buffer;
+    size_t buffer_size; // Default `BLDR_FILE_PATH_MAX` length
+} bldr_deps_read_opt_t;
+
+int bldr_deps_needs_rebuild(bldr_deps_t *deps, bool *needs_rebuild)
+    __attribute((nonnull(1, 2)));
+int bldr_deps_needs_regen(const char *dep_path, const char *src_path,
+                          bool *needs_regen) __attribute((nonnull(1, 2, 3)));
+int bldr_deps_read_opt(bldr_arena_t *arena, const char *dep_path,
+                       bldr_deps_t *deps, const bldr_deps_read_opt_t options)
+    __attribute((nonnull(1, 2, 3)));
+
+static inline int bldr_deps_append_many(bldr_deps_t *deps, size_t count,
+                                        const char **items)
+    __attribute__((nonnull(1, 3)));
+static inline void bldr_deps_done(bldr_deps_t *deps);
+static inline int bldr_deps_reserve(bldr_deps_t *deps, size_t requested)
+    __attribute__((nonnull(1)));
+static inline int bldr_deps_resize(bldr_deps_t *deps, size_t size)
+    __attribute__((nonnull(1)));
+static inline size_t bldr_deps_save(bldr_deps_t *deps)
+    __attribute__((nonnull(1)));
 
 /*
  * File declarations
@@ -581,11 +651,10 @@ static inline int bldr_proc_read_stdout(bldr_proc_handle_t *handle,
     bldr_strs_walk_opt(strings, arena, base_path, pattern,                     \
                        (bldr_strs_walk_opt_t){__VA_ARGS__})
 
-typedef struct {
-    const char **items;
-    uint32_t length;
-    uint32_t capacity;
-} bldr_strings_t;
+/*
+ * See forward declarations of implementation details for:
+ * typedef struct {} bldr_strings_t;
+ */
 
 typedef struct {
     bool fail_on_error;

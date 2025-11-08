@@ -119,6 +119,38 @@ static inline bool bldr_cmd_valid(const bldr_cmd_t *cmd) {
 }
 
 /*
+ * Dependencies inline function implementations
+ */
+
+static inline int bldr_deps_append_many(bldr_deps_t *deps, size_t count,
+                                        const char **items) {
+    assert(!deps->static_mem);
+    return bldr_strs_append_many(&deps->dependencies, count, items);
+}
+
+static inline void bldr_deps_done(bldr_deps_t *deps) {
+    if (deps && !deps->static_mem) {
+        bldr_strs_done(&deps->dependencies);
+        deps->target = NULL;
+        deps->static_mem = false;
+    }
+}
+
+static inline int bldr_deps_reserve(bldr_deps_t *deps, size_t requested) {
+    assert(!deps->static_mem);
+    return bldr_strs_reserve(&deps->dependencies, requested);
+}
+
+static inline int bldr_deps_resize(bldr_deps_t *deps, size_t size) {
+    assert(!deps->static_mem);
+    return bldr_strs_resize(&deps->dependencies, size);
+}
+
+static inline size_t bldr_deps_save(bldr_deps_t *deps) {
+    return deps->dependencies.length;
+}
+
+/*
  * Process inline function implementations
  */
 

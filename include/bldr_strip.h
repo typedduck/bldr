@@ -5,6 +5,7 @@
 #define BLDR_STRIP_PREFIX_COMMAND
 #define BLDR_STRIP_PREFIX_COMPILER
 #define BLDR_STRIP_PREFIX_DEFINES
+#define BLDR_STRIP_PREFIX_DEPENDENCIES
 #define BLDR_STRIP_PREFIX_LOGGER
 #define BLDR_STRIP_PREFIX_FILE
 #define BLDR_STRIP_PREFIX_PROCESS
@@ -79,6 +80,11 @@
 #define CC_FLAGS_RELEASE BLDR_CC_FLAGS_RELEASE
 #define CC_FLAGS_DEBUG BLDR_CC_FLAGS_DEBUG
 #define CC_FLAGS_VALGRIND BLDR_CC_FLAGS_VALGRIND
+
+#define cc_compile_opt_t bldr_cc_compile_opt_t
+
+#define cc_compile bldr_cc_compile
+#define cc_compile_opt bldr_cc_compile_opt
 #endif
 
 #ifdef BLDR_STRIP_PREFIX_DEFINES
@@ -171,6 +177,24 @@
 #define system_align bldr_system_align
 #define time_now bldr_time_now
 #endif // BLDR_STRIP_PREFIX_DEFINES
+
+#ifdef BLDR_STRIP_PREFIX_DEPENDENCIES
+#define deps_t bldr_deps_t
+#define deps_read_opt_t bldr_deps_read_opt_t
+
+#define deps_append bldr_deps_append
+#define deps_append_many bldr_deps_append_many
+#define deps_done bldr_deps_done
+#define deps_needs_rebuild bldr_deps_needs_rebuild
+#define deps_needs_regen bldr_deps_needs_regen
+#define deps_read bldr_deps_read
+#define deps_read_opt bldr_deps_read_opt
+#define deps_reserve bldr_deps_reserve
+#define deps_reset bldr_deps_reset
+#define deps_resize bldr_deps_resize
+#define deps_rewind bldr_deps_rewind
+#define deps_save bldr_deps_save
+#endif // BLDR_STRIP_PREFIX_DEPENDENCIES
 
 #ifdef BLDR_STRIP_PREFIX_FILE
 #define file_cat_opt_t bldr_file_cat_opt_t
