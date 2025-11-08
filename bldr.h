@@ -34,7 +34,7 @@ extern "C" {
  */
 
 #define _XOPEN_SOURCE 700
-#define _DEFAULT_SOURCE 1
+#define _DEFAULT_SOURCE
 
 #include <assert.h>
 #include <ctype.h>
@@ -83,8 +83,8 @@ static_assert(sizeof(void *) == 8, "Not a 64-bit system");
  * Configuration options
  */
 
-#ifndef BLDR_ARENA_CAPACITY
-#define BLDR_ARENA_CAPACITY (8 * 1024 * 1024)
+#ifndef BLDR_ARENA_DEFAULT_CAPACITY
+#define BLDR_ARENA_DEFAULT_CAPACITY (8 * 1024 * 1024)
 #endif
 
 #ifndef BLDR_ARRAY_CAPACITY_MIN
@@ -93,6 +93,29 @@ static_assert(sizeof(void *) == 8, "Not a 64-bit system");
 
 #ifndef BLDR_BUFFER_SIZE
 #define BLDR_BUFFER_SIZE (4096)
+#endif
+
+#ifndef BLDR_CC_COMPILER
+#define BLDR_CC_COMPILER "cc"
+#endif
+
+#ifndef BLDR_CC_FLAGS_COMMON
+#define BLDR_CC_FLAGS_COMMON                                                   \
+    "-std=c2x", "-Wall", "-Wextra", "-Wpedantic", "-Werror"
+#endif
+
+#ifndef BLDR_CC_FLAGS_RELEASE
+#define BLDR_CC_FLAGS_RELEASE                                                  \
+    BLDR_CC_FLAGS_COMMON, "-s", "-O2", "-DNDEBUG", "-flto"
+#endif
+
+#ifndef BLDR_CC_FLAGS_DEBUG
+#define BLDR_CC_FLAGS_DEBUG                                                    \
+    BLDR_CC_FLAGS_COMMON, "-g", "-DDEBUG", "-fsanitize=address,undefined"
+#endif
+
+#ifndef BLDR_CC_FLAGS_VALGRIND
+#define BLDR_CC_FLAGS_VALGRIND BLDR_CC_FLAGS_COMMON, "-g", "-DDEBUG"
 #endif
 
 #ifndef BLDR_COMMAND_ARGS_MAX
@@ -147,7 +170,7 @@ static_assert(BLDR_COMMAND_PROCS_MIN <= BLDR_COMMAND_PROCS_MAX,
 
 #ifndef BLDR_REBUILD_CMD
 #define BLDR_REBUILD_CMD(binary_path, source_path)                             \
-    "gcc", "-s", "-O2", "-DNDEBUG", "-o", binary_path, source_path
+    BLDR_CC_COMPILER, BLDR_CC_FLAGS_RELEASE, "-o", binary_path, source_path
 #endif
 
 #ifdef BLDR_THREAD_SAFE
@@ -177,6 +200,13 @@ static_assert(BLDR_COMMAND_PROCS_MIN <= BLDR_COMMAND_PROCS_MAX,
         abort();                                                               \
     } while (0)
 #define BLDR_UNUSED(value) (void)(value)
+#define BLDR_UNWRAP_ERROR(caller)                                              \
+    do {                                                                       \
+        int result = (caller);                                                 \
+        if (result != BLDR_OK) {                                               \
+            return result;                                                     \
+        }                                                                      \
+    } while (0)
 
 #if BLDR_OOM_ABORT
 #define BLDR_CHECK_NULLPTR(ptr)
@@ -196,8 +226,13 @@ static_assert(BLDR_COMMAND_PROCS_MIN <= BLDR_COMMAND_PROCS_MAX,
         bldr_log_error("OOM: " msg, ##__VA_ARGS__);                            \
         exit(BLDR_EXIT_NOMEM);                                                 \
     } while (0)
-#define BLDR_UNWRAP(caller) (caller)
-#define BLDR_UNWRAP_NULL(caller) (caller)
+#define BLDR_UNWRAP_NULL(caller)                                               \
+    do {                                                                       \
+        int result = (caller);                                                 \
+        if (result != BLDR_OK) {                                               \
+            exit(BLDR_EXIT_NOMEM);                                             \
+        }                                                                      \
+    } while (0)
 #else
 #define BLDR_CHECK_NULLPTR(ptr)                                                \
     if ((ptr == NULL))                                                         \
@@ -219,13 +254,6 @@ static_assert(BLDR_COMMAND_PROCS_MIN <= BLDR_COMMAND_PROCS_MAX,
     do {                                                                       \
         bldr_log_error("OOM: " msg, ##__VA_ARGS__);                            \
         return NULL;                                                           \
-    } while (0)
-#define BLDR_UNWRAP(caller)                                                    \
-    do {                                                                       \
-        int result = (caller);                                                 \
-        if (result != BLDR_OK) {                                               \
-            return result;                                                     \
-        }                                                                      \
     } while (0)
 #define BLDR_UNWRAP_NULL(caller)                                               \
     do {                                                                       \
@@ -282,11 +310,11 @@ typedef enum {
     BLDR_EXIT_OK = 0, // Successful exit
 
     // Error exit of main process
-    BLDR_EXIT_REBUILD = 1, // Rebuild failed
-    BLDR_EXIT_NOMEM = 2,   // Out of memory occured
-    BLDR_EXIT_IO = 3,      // I/O error
-    BLDR_EXIT_RAND = 4,    // Failed to generate random number
-    BLDR_EXIT_TIME = 5,    // Failed to get system time
+    BLDR_EXIT_FAIL = 1,  // Execution generally failed
+    BLDR_EXIT_NOMEM = 2, // Out of memory occured
+    BLDR_EXIT_IO = 3,    // I/O error
+    BLDR_EXIT_RAND = 4,  // Failed to generate random number
+    BLDR_EXIT_TIME = 5,  // Failed to get system time
 
     // Error exit of child process
     BLDR_EXIT_CHILD = 128,         // Forked child process exited with error
@@ -305,7 +333,17 @@ typedef enum {
 extern const char bldr_empty_string[];
 
 /*
- * General functions declarations
+ * Forward declarations
+ */
+
+typedef struct {
+    const char **items;
+    uint32_t length;
+    uint32_t capacity;
+} bldr_strings_t;
+
+/*
+ * General function declarations
  */
 
 #define bldr_align_type(size, type) bldr_align_to((size), alignof(type))
@@ -455,14 +493,13 @@ void bldr_build_yourself_many(int argc, char **argv, const char *source_path,
         ((bldr_proc_handle_t[]){__VA_ARGS__}))
 #define bldr_cmd_reset(cmd) bldr_cmd_resize(cmd, 0)
 #define bldr_cmd_rewind(cmd, n) bldr_cmd_resize(cmd, n)
-#define bldr_cmd_run(cmd, handle, ...)                                         \
-    bldr_cmd_run_opt(cmd, handle, (bldr_cmd_options_t){__VA_ARGS__})
+#define bldr_cmd_run(cmd, ...)                                                 \
+    bldr_cmd_run_opt(cmd, (bldr_cmd_options_t){__VA_ARGS__})
 
 typedef struct bldr_cmd_t {
     const char **items;
     uint32_t length;
     uint32_t capacity;
-    bool sealed;
     bool static_mem;
 } bldr_cmd_t;
 
@@ -473,8 +510,8 @@ typedef int (*bldr_proc_hook_t)(const bldr_cmd_t *cmd)
 
 typedef struct {
     bldr_cmd_procs_t *async;
-    size_t timeout_sec;
-    size_t max_processes;
+    size_t timeout_ms;
+    size_t max_processes; // when async != NULL
     const char *working_dir;
     bldr_proc_hook_t hook;
 } bldr_cmd_options_t;
@@ -487,7 +524,10 @@ typedef struct bldr_cmd_procs_t {
 } bldr_cmd_procs_t;
 
 void bldr_cmd_procs_done(bldr_cmd_procs_t *procs);
-bool bldr_cmd_procs_wait(bldr_cmd_procs_t *procs, size_t timeout_sec)
+int bldr_cmd_procs_sync(bldr_cmd_procs_t *procs, size_t timeout_ms)
+    __attribute__((nonnull(1)));
+int bldr_cmd_procs_wait(bldr_cmd_procs_t *procs, bldr_proc_handle_t *handle_out,
+                        int *exit_code, size_t timeout_ms)
     __attribute__((nonnull(1)));
 int bldr_cmd_run_opt(const bldr_cmd_t *cmd, bldr_cmd_options_t options)
     __attribute__((nonnull(1)));
@@ -512,6 +552,66 @@ static inline int bldr_cmd_procs_append_many(bldr_cmd_procs_t *procs,
                                              size_t count,
                                              bldr_proc_handle_t *items)
     __attribute__((nonnull(1, 3)));
+
+/*
+ * Compiler declarations
+ */
+
+#define bldr_cc_compile(src_path, obj_path, ...)                               \
+    bldr_cc_compile_opt(src_path, obj_path,                                    \
+                        (bldr_cc_compile_opt_t){__VA_ARGS__})
+
+typedef struct {
+    bldr_cmd_t *cmd;
+} bldr_cc_compile_opt_t;
+
+int bldr_cc_compile_opt(const char *src_path, const char *obj_path,
+                        const bldr_cc_compile_opt_t options)
+    __attribute((nonnull(1, 2)));
+
+/*
+ * Dependencies declarations
+ */
+
+#define bldr_deps_append(deps, ...)                                            \
+    bldr_deps_append_many(                                                     \
+        deps, (sizeof((const char *[]){__VA_ARGS__}) / sizeof(const char *)),  \
+        ((const char *[]){__VA_ARGS__}))
+#define bldr_deps_read(arena, dep_path, deps, ...)                             \
+    bldr_deps_read_opt(arena, dep_path, deps,                                  \
+                       (bldr_deps_read_opt_t){__VA_ARGS__})
+#define bldr_deps_reset(deps) bldr_deps_resize(deps, 0)
+#define bldr_deps_rewind(deps, n) bldr_deps_resize(deps, n)
+
+typedef struct {
+    bldr_strings_t dependencies;
+    const char *target;
+    bool static_mem;
+} bldr_deps_t;
+
+typedef struct {
+    char *buffer;
+    size_t buffer_size; // Default `BLDR_FILE_PATH_MAX` length
+} bldr_deps_read_opt_t;
+
+int bldr_deps_needs_rebuild(bldr_deps_t *deps, bool *needs_rebuild)
+    __attribute((nonnull(1, 2)));
+int bldr_deps_needs_regen(const char *dep_path, const char *src_path,
+                          bool *needs_regen) __attribute((nonnull(1, 2, 3)));
+int bldr_deps_read_opt(bldr_arena_t *arena, const char *dep_path,
+                       bldr_deps_t *deps, const bldr_deps_read_opt_t options)
+    __attribute((nonnull(1, 2, 3)));
+
+static inline int bldr_deps_append_many(bldr_deps_t *deps, size_t count,
+                                        const char **items)
+    __attribute__((nonnull(1, 3)));
+static inline void bldr_deps_done(bldr_deps_t *deps);
+static inline int bldr_deps_reserve(bldr_deps_t *deps, size_t requested)
+    __attribute__((nonnull(1)));
+static inline int bldr_deps_resize(bldr_deps_t *deps, size_t size)
+    __attribute__((nonnull(1)));
+static inline size_t bldr_deps_save(bldr_deps_t *deps)
+    __attribute__((nonnull(1)));
 
 /*
  * File declarations
@@ -660,8 +760,6 @@ void bldr_log_time(bool local);
     bldr_proc_exec_async_opt(cmd, handle,                                      \
                              (bldr_proc_async_options_t){__VA_ARGS__})
 
-typedef struct bldr_cmd_t bldr_cmd_t;
-
 typedef struct bldr_proc_handle_t {
     int stdout_fd;
     int stderr_fd;
@@ -716,7 +814,7 @@ static inline int bldr_proc_read_stdout(bldr_proc_handle_t *handle,
     __attribute__((nonnull(1, 4)));
 
 /*
- * String declarations
+ * Strings declarations
  */
 
 #define bldr_strs_append(strs, ...)                                            \
@@ -732,11 +830,10 @@ static inline int bldr_proc_read_stdout(bldr_proc_handle_t *handle,
     bldr_strs_walk_opt(strings, arena, base_path, pattern,                     \
                        (bldr_strs_walk_opt_t){__VA_ARGS__})
 
-typedef struct {
-    const char **items;
-    uint32_t length;
-    uint32_t capacity;
-} bldr_strings_t;
+/*
+ * See forward declarations of implementation details for:
+ * typedef struct {} bldr_strings_t;
+ */
 
 typedef struct {
     bool fail_on_error;
@@ -780,6 +877,23 @@ static inline size_t bldr_strs_save(bldr_strings_t *strings)
     __attribute__((nonnull(1)));
 
 /*
+ * Timer declarations
+ */
+
+typedef struct {
+    double start;
+    double timeout;
+    long sleep;
+} bldr_timer_t;
+
+int bldr_timer_init(bldr_timer_t *timer, long timeout_ms)
+    __attribute__((nonnull(1)));
+int bldr_timer_init_now(bldr_timer_t *timer, long timeout_ms)
+    __attribute__((nonnull(1)));
+int bldr_timer_sleep(bldr_timer_t *timer) __attribute__((nonnull(1)));
+void bldr_timer_start(bldr_timer_t *timer) __attribute__((nonnull(1)));
+
+/*
  * General inline function implementations
  */
 
@@ -790,7 +904,7 @@ static inline size_t bldr_align_to(size_t value, size_t alignment) {
 }
 
 static inline char *bldr_arg_shift(int *argc, char ***argv) {
-    assert(argc != NULL && *argc > 0 && argv != NULL);
+    assert(argc != NULL && *argc > 0 && *argv != NULL);
     char *arg = **argv;
     (*argc)--, (*argv)++;
     return arg;
@@ -841,14 +955,14 @@ static inline int bldr_array_resize(bldr_array_t *array, size_t item_size,
 
 static inline int bldr_cmd_append_many(bldr_cmd_t *cmd, size_t count,
                                        const char **items) {
-    assert(!cmd->sealed && !cmd->static_mem);
-    BLDR_UNWRAP(bldr_array_append_many((bldr_array_t *)cmd, sizeof(char *),
-                                       count, items));
+    assert(!cmd->static_mem);
+    BLDR_UNWRAP_ERROR(bldr_array_append_many((bldr_array_t *)cmd,
+                                             sizeof(char *), count, items));
     return bldr_cmd_resize(cmd, cmd->length);
 }
 
 static inline void bldr_cmd_done(bldr_cmd_t *cmd) {
-    if (!cmd->static_mem)
+    if (cmd && !cmd->static_mem)
         bldr_array_done((bldr_array_t *)cmd);
 }
 
@@ -874,17 +988,18 @@ static inline int bldr_cmd_procs_append_many(bldr_cmd_procs_t *procs,
 }
 
 static inline int bldr_cmd_reserve(bldr_cmd_t *cmd, size_t requested) {
-    assert(!cmd->sealed && !cmd->static_mem);
+    assert(!cmd->static_mem);
     return bldr_array_reserve((bldr_array_t *)cmd, sizeof(char *),
                               requested + 1);
 }
 
 static inline int bldr_cmd_resize(bldr_cmd_t *cmd, size_t size) {
-    assert(!cmd->sealed && !cmd->static_mem);
+    assert(!cmd->static_mem);
 
-    BLDR_UNWRAP(
+    BLDR_UNWRAP_ERROR(
         bldr_array_reserve((bldr_array_t *)cmd, sizeof(char *), size + 1));
-    BLDR_UNWRAP(bldr_array_resize((bldr_array_t *)cmd, sizeof(char *), size));
+    BLDR_UNWRAP_ERROR(
+        bldr_array_resize((bldr_array_t *)cmd, sizeof(char *), size));
 
     cmd->items[size] = NULL;
     return BLDR_OK;
@@ -896,6 +1011,38 @@ static inline bool bldr_cmd_valid(const bldr_cmd_t *cmd) {
     return cmd->length > 0 && cmd->length <= BLDR_COMMAND_ARGS_MAX &&
            cmd->items[0] && *cmd->items[0] != '\0' &&
            cmd->items[cmd->length] == NULL;
+}
+
+/*
+ * Dependencies inline function implementations
+ */
+
+static inline int bldr_deps_append_many(bldr_deps_t *deps, size_t count,
+                                        const char **items) {
+    assert(!deps->static_mem);
+    return bldr_strs_append_many(&deps->dependencies, count, items);
+}
+
+static inline void bldr_deps_done(bldr_deps_t *deps) {
+    if (deps && !deps->static_mem) {
+        bldr_strs_done(&deps->dependencies);
+        deps->target = NULL;
+        deps->static_mem = false;
+    }
+}
+
+static inline int bldr_deps_reserve(bldr_deps_t *deps, size_t requested) {
+    assert(!deps->static_mem);
+    return bldr_strs_reserve(&deps->dependencies, requested);
+}
+
+static inline int bldr_deps_resize(bldr_deps_t *deps, size_t size) {
+    assert(!deps->static_mem);
+    return bldr_strs_resize(&deps->dependencies, size);
+}
+
+static inline size_t bldr_deps_save(bldr_deps_t *deps) {
+    return deps->dependencies.length;
 }
 
 /*
@@ -963,10 +1110,7 @@ static inline size_t bldr_vmem_available(bldr_vmem_t *vmem) {
     return vmem->capacity - vmem->length;
 }
 
-static inline void *bldr_vmem_base_ptr(bldr_vmem_t *vmem) {
-    assert(vmem->base != NULL); // not initialized
-    return vmem->base;
-}
+static inline void *bldr_vmem_base_ptr(bldr_vmem_t *vmem) { return vmem->base; }
 
 static inline size_t bldr_vmem_capacity(bldr_vmem_t *vmem) {
     return vmem->capacity;
@@ -981,7 +1125,6 @@ static inline size_t bldr_vmem_length(bldr_vmem_t *vmem) {
 }
 
 static inline void *bldr_vmem_top_ptr(bldr_vmem_t *vmem) {
-    assert(vmem->base != NULL); // not initialized
     return vmem->base + vmem->length;
 }
 
@@ -1042,7 +1185,10 @@ void bldr_arena_done(bldr_arena_t *arena) {
 int bldr_arena_init(bldr_arena_t *arena, size_t capacity) {
     bldr_vmem_t vmem = {0};
 
-    BLDR_UNWRAP(bldr_vmem_init(&vmem, capacity));
+    if (capacity == 0)
+        capacity = BLDR_ARENA_DEFAULT_CAPACITY;
+
+    BLDR_UNWRAP_ERROR(bldr_vmem_init(&vmem, capacity));
     bldr_arena_init_in(arena, vmem);
     return BLDR_OK;
 }
@@ -1110,16 +1256,13 @@ size_t bldr_arena_save(bldr_arena_t *arena) {
 }
 
 char *bldr_arena_sprintf(bldr_arena_t *arena, const char *format, ...) {
-    static const char empty_string[] = "";
-
     va_list args;
     va_start(args, format);
     int length = vsnprintf(NULL, 0, format, args);
     va_end(args);
 
-    if (length <= 0) {
-        return (char *)empty_string;
-    }
+    if (length <= 0)
+        return bldr_arena_strdup(arena, "");
 
     char *result = bldr_arena_alloc(arena, length + 1);
     BLDR_HANDLE_NULL(result);
@@ -1183,7 +1326,7 @@ int bldr_array_append_many(bldr_array_t *array, size_t item_size, size_t count,
                            array->length, count);
         }
 
-        BLDR_UNWRAP(
+        BLDR_UNWRAP_ERROR(
             bldr_array_reserve(array, item_size, array->length + count));
         memcpy(array->items + (item_size * array->length), items,
                item_size * count);
@@ -1252,7 +1395,7 @@ int bldr_array_reserve(bldr_array_t *array, size_t item_size,
     do {                                                                       \
         int result = (caller);                                                 \
         if (result != BLDR_OK) {                                               \
-            exit(BLDR_EXIT_REBUILD);                                           \
+            exit(BLDR_EXIT_FAIL);                                              \
         }                                                                      \
     } while (0)
 #endif
@@ -1286,11 +1429,11 @@ int bldr_needs_rebuild_many(const char *output_path, size_t input_paths_count,
             return BLDR_ERR_FILE_STAT;
         }
         if (statbuf.st_mtime > output_path_time) {
-            return 1;
+            return BLDR_TRUE;
         }
     }
 
-    return 0;
+    return BLDR_FALSE;
 }
 
 void bldr_build_yourself_many(int argc, char **argv, const char *source_path,
@@ -1308,9 +1451,9 @@ void bldr_build_yourself_many(int argc, char **argv, const char *source_path,
         binary_path, source_paths.length, source_paths.items);
 
     if (rebuild_needed < 0) {
-        exit(BLDR_EXIT_REBUILD);
+        exit(BLDR_EXIT_FAIL);
     }
-    if (!rebuild_needed) {
+    if (rebuild_needed == BLDR_FALSE) {
         return;
     }
 
@@ -1327,10 +1470,10 @@ void bldr_build_yourself_many(int argc, char **argv, const char *source_path,
 
 #if !BLDR_OOM_ABORT
     if (!old_binary_path)
-        exit(BLDR_EXIT_REBUILD);
+        exit(BLDR_EXIT_FAIL);
 #endif
     if (bldr_file_rename(binary_path, old_binary_path) != BLDR_OK)
-        exit(BLDR_EXIT_REBUILD);
+        exit(BLDR_EXIT_FAIL);
 
     // ===== Rebuild the binary ================================================
     BLDR_DEFER(bldr_cmd_t cmd, bldr_cmd_done) = {0};
@@ -1347,11 +1490,11 @@ void bldr_build_yourself_many(int argc, char **argv, const char *source_path,
         if (exit_code != 0) {
             bldr_log_error("%s failed with exit code %d", cmd.items[0],
                            exit_code);
-            exit(BLDR_EXIT_REBUILD);
+            exit(BLDR_EXIT_FAIL);
         }
         bldr_log_info("%s exited successful", cmd.items[0]);
     } else {
-        exit(BLDR_EXIT_REBUILD);
+        exit(BLDR_EXIT_FAIL);
     }
 
     // ===== Execute the rebuild binary ========================================
@@ -1363,7 +1506,7 @@ void bldr_build_yourself_many(int argc, char **argv, const char *source_path,
     exit_code = 0;
     result = bldr_proc_exec(&cmd, &exit_code, .no_redirect = true);
     if (result != BLDR_OK)
-        exit(BLDR_EXIT_REBUILD);
+        exit(BLDR_EXIT_FAIL);
 
     exit(exit_code);
 }
@@ -1486,7 +1629,6 @@ bldr_cmd_t *bldr_cmd_clone_in(const bldr_cmd_t *cmd, bldr_arena_t *arena) {
     cloned->items = (const char **)(data + array_offset);
     cloned->length = cmd->length;
     cloned->capacity = cmd->length + 1;
-    cloned->sealed = true;
     cloned->static_mem = true;
 
     // Copy strings and set up pointer array
@@ -1507,10 +1649,103 @@ bldr_cmd_t *bldr_cmd_clone_in(const bldr_cmd_t *cmd, bldr_arena_t *arena) {
 }
 
 void bldr_cmd_procs_done(bldr_cmd_procs_t *procs) {
+    BLDR_UNUSED(procs);
     BLDR_TODO("Implement bldr_cmd_procs_done");
 }
-bool bldr_cmd_procs_wait(bldr_cmd_procs_t *procs, size_t timeout_sec) {
-    BLDR_TODO("Implement bldr_cmd_procs_wait");
+
+int bldr_cmd_procs_sync(bldr_cmd_procs_t *procs, size_t timeout_ms) {
+    if (procs->length == 0) {
+        return BLDR_OK;
+    }
+
+    int last_error = BLDR_OK;
+
+    // Wait for all processes
+    while (procs->length > 0) {
+        int exit_code = -1;
+        bldr_proc_handle_t handle;
+        int result =
+            bldr_cmd_procs_wait(procs, &handle, &exit_code, timeout_ms);
+
+        last_error = result != BLDR_OK ? result : last_error;
+        bldr_proc_handle_done(&handle);
+    }
+
+    return last_error;
+}
+
+int bldr_cmd_procs_wait(bldr_cmd_procs_t *procs, bldr_proc_handle_t *handle_out,
+                        int *exit_code, size_t timeout_ms) {
+    if (procs->length == 0)
+        return BLDR_OK;
+    if (procs->length == 1) {
+        bldr_proc_handle_t *handle = &procs->items[0];
+        int result = bldr_proc_wait(handle, exit_code, timeout_ms);
+
+        if (handle_out)
+            memcpy(handle_out, handle, sizeof(*handle_out));
+        else
+            bldr_proc_handle_done(handle);
+
+        procs->length--;
+        return result;
+    }
+
+    // Multiple processes - wait on any in the process group
+    if (procs->proc_group <= 0) {
+        bldr_log_error("attempt to wait on invalid process group id");
+        return BLDR_ERR_ARGS;
+    }
+
+    bldr_timer_t timer;
+    bldr_timer_init_now(&timer, timeout_ms);
+
+    while (true) {
+        // Use waitpid with -pgid to wait for any process in the group
+        int status;
+        pid_t pid = waitpid(-procs->proc_group, &status, WNOHANG);
+
+        if (pid > 0) {
+            // Found a completed process - find it in procs
+            for (uint32_t i = 0; i < procs->length; i++) {
+                if (procs->items[i].pid == pid) {
+                    bldr_proc_handle_t *handle = &procs->items[i];
+                    handle->is_running = false;
+
+                    if (handle_out)
+                        memcpy(handle_out, handle, sizeof(*handle_out));
+                    else
+                        bldr_proc_handle_done(handle);
+
+                    // Remove from array by shifting remaining elements
+                    memmove(&procs->items[i], &procs->items[i + 1],
+                            (procs->length - i - 1) *
+                                sizeof(bldr_proc_handle_t));
+                    procs->length--;
+
+                    return BLDR_OK;
+                }
+            }
+
+            // Process not in our array - shouldn't happen
+            bldr_log_warn(
+                "waitpid returned unexpected pid %d, not in process list", pid);
+            continue;
+        } else if (pid == -1) {
+            if (errno == ECHILD && procs->length > 0)
+                bldr_log_warn("process group (%d) has no more children, %d "
+                              "processes left",
+                              procs->proc_group, procs->length);
+            bldr_log_error("waitpid failed (%s)", strerror(errno));
+            return BLDR_ERR_WAIT;
+        }
+
+        if (bldr_timer_sleep(&timer) == BLDR_ERR_TIMEOUT) {
+            bldr_log_warn("timeout waiting for processes in group %d",
+                          procs->proc_group);
+            return BLDR_ERR_TIMEOUT;
+        }
+    }
 }
 
 int bldr_cmd_run_opt(const bldr_cmd_t *cmd, bldr_cmd_options_t options) {
@@ -1526,13 +1761,16 @@ int bldr_cmd_run_opt(const bldr_cmd_t *cmd, bldr_cmd_options_t options) {
                     BLDR_COMMAND_PROCS_MAX),
                 BLDR_COMMAND_PROCS_MIN);
 
-        while (options.async->length >= max_processes) {
-            // Wait or terminate after timeout
-            bool removed =
-                bldr_cmd_procs_wait(options.async, options.timeout_sec);
+        while (options.async->length &&
+               options.async->length >= max_processes) {
+            uint32_t length = options.async->length;
+            int result = bldr_cmd_procs_wait(options.async, NULL, NULL,
+                                             options.timeout_ms);
 
-            if (!removed) // If no process was removed, exit loop
-                break;
+            // if an error occured and no process was removed, return error to
+            // avoid infinite loop
+            if (result != BLDR_OK && length == options.async->length)
+                return result;
         }
 
         BLDR_DEFER(bldr_proc_handle_t handle, bldr_proc_handle_done);
@@ -1548,17 +1786,415 @@ int bldr_cmd_run_opt(const bldr_cmd_t *cmd, bldr_cmd_options_t options) {
         if (options.async->proc_group == 0)
             options.async->proc_group = handle.pid;
 
-        BLDR_UNWRAP(bldr_cmd_procs_append(options.async, handle));
+        BLDR_UNWRAP_ERROR(bldr_cmd_procs_append(options.async, handle));
 
         return BLDR_OK;
     } else {
-        int result = bldr_proc_exec(cmd, NULL, .hook = options.hook,
-                                    .log_command = true, .log_stderr = true,
-                                    .timeout_ms = options.timeout_sec,
-                                    .working_dir = options.working_dir);
+        int result =
+            bldr_proc_exec(cmd, NULL, .hook = options.hook, .log_command = true,
+                           .log_stderr = true, .log_stdout = true,
+                           .timeout_ms = options.timeout_ms,
+                           .working_dir = options.working_dir);
 
         return result;
     }
+}
+
+/*
+ * Compiler function implementations
+ */
+
+int bldr_cc_compile_opt(const char *src_path, const char *obj_path,
+                        const bldr_cc_compile_opt_t options) {
+    BLDR_UNUSED(src_path);
+    BLDR_UNUSED(obj_path);
+    BLDR_UNUSED(options);
+    BLDR_TODO("Implement bldr_cc_compile_opt");
+}
+
+/*
+ * Dependencies internal declarations
+ */
+
+typedef struct {
+    char *data;
+    size_t length;
+    size_t capacity;
+} _bldr_deps_buffer_t;
+
+typedef struct {
+    const char *content; // File content
+    size_t length;       // Total content length
+    size_t pos;          // Current position
+    size_t line;         // Current line (1-indexed)
+    size_t column;       // Current column (1-indexed)
+    bldr_arena_t *arena; // Arena for allocations
+} _bldr_deps_parser_t;
+
+static bool _bldr_deps_parse_continuation(_bldr_deps_parser_t *parser)
+    __attribute__((nonnull(1)));
+static int _bldr_deps_parse_filename(_bldr_deps_parser_t *parser,
+                                     _bldr_deps_buffer_t *output)
+    __attribute__((nonnull(1, 2)));
+static int _bldr_deps_parse_line(_bldr_deps_parser_t *parser,
+                                 _bldr_deps_buffer_t *output, bldr_deps_t *deps)
+    __attribute__((nonnull(1, 2, 3)));
+static void _bldr_deps_parser_advance(_bldr_deps_parser_t *parser)
+    __attribute__((nonnull(1)));
+static inline bool _bldr_deps_parser_at_end(const _bldr_deps_parser_t *parser);
+static int _bldr_deps_parser_buffer_add(_bldr_deps_buffer_t *buffer, char c)
+    __attribute__((nonnull(1)));
+static inline bool _bldr_deps_parser_isspace(char c);
+static inline char _bldr_deps_parser_peek(const _bldr_deps_parser_t *parser)
+    __attribute__((nonnull(1)));
+static inline char
+_bldr_deps_parser_peek_ahead(const _bldr_deps_parser_t *parser, size_t offset)
+    __attribute__((nonnull(1)));
+static void _bldr_deps_parser_skip_space(_bldr_deps_parser_t *parser)
+    __attribute__((nonnull(1)));
+
+/*
+ * Dependencies function implementations
+ */
+
+int bldr_deps_needs_rebuild(bldr_deps_t *deps, bool *needs_rebuild) {
+    *needs_rebuild = false;
+    if (deps->target == NULL || deps->target[0] == '\0') {
+        bldr_log_error("dependency target not specified");
+        return BLDR_ERR_ARGS;
+    }
+
+    struct stat target_stat;
+    if (stat(deps->target, &target_stat) != 0) {
+        if (errno == ENOENT) {
+            // Missing target triggers rebuild
+            *needs_rebuild = true;
+            return BLDR_OK;
+        }
+        bldr_log_error("could not stat '%s' (%s)", deps->target,
+                       strerror(errno));
+        return BLDR_ERR_FILE_STAT;
+    }
+
+    for (size_t i = 0; i < deps->dependencies.length; i++) {
+        struct stat dep_stat;
+        if (stat(deps->dependencies.items[i], &dep_stat) != 0) {
+            // Dependencies must exist
+            bldr_log_error("could not stat '%s' (%s)",
+                           deps->dependencies.items[i], strerror(errno));
+            *needs_rebuild = false;
+            return BLDR_ERR_FILE_STAT;
+        }
+
+        if (dep_stat.st_mtime > target_stat.st_mtime) {
+            *needs_rebuild = true;
+            return BLDR_OK;
+        }
+    }
+
+    return BLDR_OK;
+}
+
+int bldr_deps_needs_regen(const char *dep_path, const char *src_path,
+                          bool *needs_regen) {
+    struct stat dep_stat, src_stat;
+
+    *needs_regen = false;
+    if (stat(dep_path, &dep_stat) != 0) {
+        if (errno == ENOENT) {
+            // Missing dependency file triggers regeneration
+            *needs_regen = true;
+            return BLDR_OK;
+        }
+        bldr_log_error("could not stat '%s' (%s)", dep_path, strerror(errno));
+        return BLDR_ERR_FILE_STAT;
+    }
+
+    if (stat(src_path, &src_stat) != 0) {
+        // Source file must exist
+        bldr_log_error("could not stat '%s' (%s)", src_path, strerror(errno));
+        return BLDR_ERR_FILE_STAT;
+    }
+
+    *needs_regen = src_stat.st_mtime > dep_stat.st_mtime;
+    return BLDR_OK;
+}
+
+int bldr_deps_read_opt(bldr_arena_t *arena, const char *dep_path,
+                       bldr_deps_t *deps, const bldr_deps_read_opt_t options) {
+    _bldr_deps_buffer_t buffer = {0};
+
+    buffer.capacity =
+        options.buffer_size ? options.buffer_size : BLDR_FILE_PATH_MAX;
+    buffer.data = options.buffer;
+    BLDR_DEFER(void *buffer_cleanup, bldr_realloc_cleanup) = NULL;
+    if (!buffer.data) {
+        buffer.data = BLDR_REALLOC(NULL, buffer.capacity);
+        if (buffer.data == NULL)
+            BLDR_OOM_ERROR(
+                "failed to allocated buffer for reading dependency file");
+        buffer_cleanup = buffer.data;
+    }
+
+    struct stat st;
+    if (stat(dep_path, &st) != 0) {
+        bldr_log_error("could not stat '%s' (%s)", dep_path, strerror(errno));
+        return BLDR_ERR_FILE_STAT;
+    }
+
+    if (st.st_size == 0) {
+        bldr_log_warn("empty dependency file: %s", dep_path);
+        return BLDR_OK;
+    }
+
+    BLDR_DEFER(FILE * f, bldr_file_done) = fopen(dep_path, "rb");
+    if (f == NULL) {
+        bldr_log_error("unable to open dependency file '%s' for reading (%s)",
+                       dep_path, strerror(errno));
+        return BLDR_ERR_FILE;
+    }
+
+    _bldr_deps_parser_t parser = {
+        .arena = arena, .length = st.st_size, .column = 1, .line = 1, .pos = 0};
+    char *content = bldr_arena_alloc(arena, parser.length + 1);
+    BLDR_CHECK_NULLPTR(content);
+
+    size_t read = fread(content, 1, parser.length, f);
+    if (read != parser.length) {
+        if (ferror(f)) {
+            bldr_log_error("unable to read dependency file '%s' (%s)", dep_path,
+                           strerror(errno));
+        } else {
+            bldr_log_error("unexpected EOF reading dependency file '%s'",
+                           dep_path);
+        }
+        return BLDR_ERR_FILE;
+    }
+    content[parser.length] = '\0';
+    parser.content = content;
+
+    return _bldr_deps_parse_line(&parser, &buffer, deps);
+}
+
+/*
+ * Dependencies static helper function implementations
+ */
+
+static bool _bldr_deps_parse_continuation(_bldr_deps_parser_t *parser) {
+    if (_bldr_deps_parser_peek(parser) != '\\')
+        return false;
+
+    char next = _bldr_deps_parser_peek_ahead(parser, 1);
+    if (next == '\n') {
+        _bldr_deps_parser_advance(parser); // Skip backslash
+        _bldr_deps_parser_advance(parser); // Skip newline
+        return true;
+    }
+
+    if (next == '\r') {
+        char after_cr = _bldr_deps_parser_peek_ahead(parser, 2);
+        _bldr_deps_parser_advance(parser); // Skip backslash
+        _bldr_deps_parser_advance(parser); // Skip CR
+        if (after_cr == '\n')
+            _bldr_deps_parser_advance(parser); // Skip LF
+        return true;
+    }
+
+    return false;
+}
+
+static int _bldr_deps_parse_filename(_bldr_deps_parser_t *parser,
+                                     _bldr_deps_buffer_t *output) {
+    while (!_bldr_deps_parser_at_end(parser)) {
+        char current = _bldr_deps_parser_peek(parser);
+
+        // Stop at unescaped whitespace or colon or newline
+        if (_bldr_deps_parser_isspace(current) || current == ':' ||
+            current == '\n' || current == '\r') {
+            break;
+        }
+
+        // Handle backslash escapes
+        if (current == '\\') {
+            char next = _bldr_deps_parser_peek_ahead(parser, 1);
+
+            // Escaped space
+            if (next == ' ') {
+                _bldr_deps_parser_advance(parser); // Skip backslash
+                _bldr_deps_parser_advance(parser); // Skip space
+                BLDR_UNWRAP_ERROR(_bldr_deps_parser_buffer_add(output, ' '));
+                continue;
+            }
+
+            // Escaped backslash
+            if (next == '\\') {
+                _bldr_deps_parser_advance(parser); // Skip first backslash
+                _bldr_deps_parser_advance(parser); // Skip second backslash
+                BLDR_UNWRAP_ERROR(_bldr_deps_parser_buffer_add(output, '\\'));
+                continue;
+            }
+
+            // Escaped hash
+            if (next == '#') {
+                _bldr_deps_parser_advance(parser); // Skip backslash
+                _bldr_deps_parser_advance(parser); // Skip hash
+                BLDR_UNWRAP_ERROR(_bldr_deps_parser_buffer_add(output, '#'));
+                continue;
+            }
+
+            // Line continuation - should not appear in filename
+            if (next == '\n' || next == '\r') {
+                bldr_log_error("(%zu, %zu) line continuation in filename",
+                               parser->line, parser->column);
+                return BLDR_ERR_SYNTAX;
+            }
+
+            // Backslash without recognized escape - treat as literal
+            _bldr_deps_parser_advance(parser);
+            BLDR_UNWRAP_ERROR(_bldr_deps_parser_buffer_add(output, '\\'));
+            continue;
+        }
+
+        // Handle dollar sign (Make uses $$ for literal $)
+        if (current == '$') {
+            char next = _bldr_deps_parser_peek_ahead(parser, 1);
+            if (next == '$') {
+                _bldr_deps_parser_advance(parser); // Skip first $
+                _bldr_deps_parser_advance(parser); // Skip second $
+                BLDR_UNWRAP_ERROR(_bldr_deps_parser_buffer_add(output, '$'));
+                continue;
+            }
+        }
+
+        // Regular character - Ensure buffer has space
+        BLDR_UNWRAP_ERROR(_bldr_deps_parser_buffer_add(output, current));
+        _bldr_deps_parser_advance(parser);
+    }
+
+    if (output->length == 0)
+        return BLDR_ERR_SYNTAX;
+
+    // Null terminate
+    BLDR_UNWRAP_ERROR(_bldr_deps_parser_buffer_add(output, '\0'));
+    return BLDR_OK;
+}
+
+static int _bldr_deps_parse_line(_bldr_deps_parser_t *parser,
+                                 _bldr_deps_buffer_t *output,
+                                 bldr_deps_t *deps) {
+    // Skip leading whitespace
+    _bldr_deps_parser_skip_space(parser);
+
+    // Parse target
+    output->length = 0;
+    BLDR_UNWRAP_ERROR(_bldr_deps_parse_filename(parser, output));
+
+    if (output->length == 0) {
+        bldr_log_error("(%zu, %zu) no target specified", parser->line,
+                       parser->column);
+        return BLDR_ERR_SYNTAX;
+    }
+
+    deps->target =
+        bldr_arena_strndup(parser->arena, output->data, output->length);
+    BLDR_CHECK_NULLPTR(deps->target);
+
+    // Skip whitespace after target
+    _bldr_deps_parser_skip_space(parser);
+
+    // Expect colon
+    if (_bldr_deps_parser_peek(parser) != ':') {
+        bldr_log_error("(%zu, %zu) missing colon after target", parser->line,
+                       parser->column);
+        return BLDR_ERR_SYNTAX;
+    }
+    _bldr_deps_parser_advance(parser); // Skip colon
+
+    // Parse dependencies
+    while (!_bldr_deps_parser_at_end(parser)) {
+        // Skip whitespace
+        _bldr_deps_parser_skip_space(parser);
+
+        // Check for line continuation
+        if (_bldr_deps_parse_continuation(parser))
+            continue;
+
+        // Check for end of line
+        char current = _bldr_deps_parser_peek(parser);
+        if (current == '\n' || current == '\r' || current == '\0')
+            break;
+
+        // Check for comment (unescaped #)
+        if (current == '#')
+            break;
+
+        // Parse dependency filename
+        output->length = 0;
+        BLDR_UNWRAP_ERROR(_bldr_deps_parse_filename(parser, output));
+
+        // Skip empty tokens
+        if (output->length == 0)
+            continue;
+
+        // Add to dependencies array
+        char *dependency =
+            bldr_arena_strndup(parser->arena, output->data, output->length);
+        BLDR_CHECK_NULLPTR(dependency);
+        bldr_deps_append(deps, dependency);
+    }
+
+    return BLDR_OK;
+}
+
+static void _bldr_deps_parser_advance(_bldr_deps_parser_t *parser) {
+    if (parser->pos >= parser->length)
+        return;
+
+    char current = parser->content[parser->pos];
+    parser->pos++;
+
+    if (current == '\n') {
+        parser->line++;
+        parser->column = 1;
+    } else {
+        parser->column++;
+    }
+}
+
+static inline bool _bldr_deps_parser_at_end(const _bldr_deps_parser_t *parser) {
+    return parser->pos >= parser->length;
+}
+
+static int _bldr_deps_parser_buffer_add(_bldr_deps_buffer_t *buffer, char c) {
+    if (buffer->length >= buffer->capacity) {
+        bldr_log_error("dependency parser buffer overflow");
+        return BLDR_ERR_OVERFLOW;
+    }
+    buffer->data[buffer->length++] = c;
+    return BLDR_OK;
+}
+
+static inline bool _bldr_deps_parser_isspace(char c) {
+    return c == ' ' || c == '\t';
+}
+
+static inline char _bldr_deps_parser_peek(const _bldr_deps_parser_t *parser) {
+    if (parser->pos >= parser->length)
+        return '\0';
+    return parser->content[parser->pos];
+}
+
+static inline char
+_bldr_deps_parser_peek_ahead(const _bldr_deps_parser_t *parser, size_t offset) {
+    size_t peek_pos = parser->pos + offset;
+    if (peek_pos >= parser->length)
+        return '\0';
+    return parser->content[peek_pos];
+}
+
+static void _bldr_deps_parser_skip_space(_bldr_deps_parser_t *parser) {
+    while (_bldr_deps_parser_isspace(_bldr_deps_parser_peek(parser)))
+        _bldr_deps_parser_advance(parser);
 }
 
 /*
@@ -2149,8 +2785,7 @@ static int _bldr_file_walk_recursive(const char *pattern,
         }
 
         bool is_directory = S_ISDIR(file_stat.st_mode);
-        const bool flags =
-            FNM_PATHNAME | (options.no_escape ? FNM_NOESCAPE : 0);
+        const int flags = FNM_PATHNAME | (options.no_escape ? FNM_NOESCAPE : 0);
         bool matches_pattern = fnmatch(pattern, entry->d_name, flags) == 0;
 
         // Handle directories
@@ -2627,20 +3262,20 @@ int bldr_proc_exec_opt(const bldr_cmd_t *cmd, int *exit_code_ret,
     BLDR_AND_THEN(result,
                   bldr_proc_wait(&handle, &exit_code, options.timeout_ms));
 
-    if (exit_code_ret)
-        *exit_code_ret = exit_code;
-    if (exit_code != BLDR_EXIT_OK)
-        bldr_log_warn("process %d exited with code %d", handle.pid, exit_code);
-    if (result != BLDR_OK)
-        return result;
     if (options.no_redirect == false) {
         if (options.log_stdout)
             bldr_log_stdout(&handle);
         if (options.log_stderr)
             bldr_log_stderr(&handle);
     }
+    if (exit_code_ret)
+        *exit_code_ret = exit_code;
+    if (exit_code != BLDR_EXIT_OK)
+        bldr_log_warn("process %d exited with code %d", handle.pid, exit_code);
 
-    return result;
+    return result != BLDR_OK           ? result
+           : exit_code != BLDR_EXIT_OK ? BLDR_ERR_EXEC
+                                       : BLDR_OK;
 }
 
 int bldr_proc_exec_async_opt(const bldr_cmd_t *cmd, bldr_proc_handle_t *handle,
@@ -2693,9 +3328,6 @@ int bldr_proc_exec_async_opt(const bldr_cmd_t *cmd, bldr_proc_handle_t *handle,
     } else { // Parent process
         if (options.no_redirect == false)
             _bldr_proc_close_pipes(pipes, false); // Close child ends
-
-        if (options.proc_group == 0)
-            options.proc_group = pid;
 
         // Set up handle before any potential error paths
         if (options.no_redirect == false) {
@@ -2773,11 +3405,13 @@ int bldr_proc_terminate(bldr_proc_handle_t *handle, bool force) {
         handle->is_running = false;
         return BLDR_OK;
     }
+    if (force)
+        bldr_log_warn("forcing process (%d) to terminate", handle->pid);
 
     int signal = force ? SIGKILL : SIGTERM;
     if (kill(handle->pid, signal) == -1) {
-        if (errno == ESRCH) {
-            // Process already terminated
+        if (errno == ESRCH || signal == SIGKILL) {
+            // Process already terminated or was killed
             handle->is_running = false;
             return BLDR_OK;
         }
@@ -2792,7 +3426,6 @@ int bldr_proc_terminate(bldr_proc_handle_t *handle, bool force) {
         if (bldr_proc_is_running(handle->pid)) {
             // Don't check error here - process might have exited between
             // checks
-            bldr_log_warn("forcing process (%d) to terminate", handle->pid);
             kill(handle->pid, SIGKILL);
         }
     }
@@ -2809,7 +3442,7 @@ int bldr_proc_wait(bldr_proc_handle_t *handle, int *exit_code,
     }
 
     int status;
-    pid_t result = _bldr_proc_wait_timeout(handle->pid, &status, timeout_ms);
+    int result = _bldr_proc_wait_timeout(handle->pid, &status, timeout_ms);
 
     if (result != BLDR_OK) {
         // Try to kill the child process if timeout occurred
@@ -3059,13 +3692,8 @@ static int _bldr_proc_wait_timeout(pid_t pid, int *status, size_t timeout_ms) {
         return BLDR_OK;
     }
 
-    double start_time = bldr_time_now();
-    const double timeout_time = (double)timeout_ms / 1000.0;
-
-    // Adaptive polling: start with shorter intervals, increase gradually
-    const long min_sleep = 1000;  // 1ms minimum
-    const long max_sleep = 50000; // 50ms maximum
-    long current_sleep = min_sleep;
+    bldr_timer_t timer;
+    bldr_timer_init_now(&timer, timeout_ms);
 
     while (true) {
         pid_t result = waitpid(pid, status, WNOHANG);
@@ -3078,29 +3706,12 @@ static int _bldr_proc_wait_timeout(pid_t pid, int *status, size_t timeout_ms) {
             // Process has terminated
             return BLDR_OK;
         } else if (result == 0) {
-            // Process is still running, check timeout
-            double elapsed_time = bldr_time_now() - start_time;
+            int result = bldr_timer_sleep(&timer);
 
-            if (elapsed_time >= timeout_time) {
+            if (result == BLDR_ERR_TIMEOUT) {
                 bldr_log_warn("process %d timed out", pid);
                 return BLDR_ERR_TIMEOUT;
             }
-            // For the last second, use shorter sleep intervals for
-            // responsiveness
-            if (elapsed_time >= timeout_time - 1) {
-                current_sleep = min_sleep;
-            }
-
-            // Sleep with adaptive interval (exponential backoff with cap)
-            if (usleep(current_sleep) == -1 && errno == EINTR) {
-                // If interrupted by signal, just continue - don't treat as
-                // error
-                continue;
-            }
-
-            // Gradually increase sleep time to reduce CPU usage with 1.5x
-            // multiplier
-            current_sleep = MIN((current_sleep * 3) / 2, max_sleep);
         }
     }
 }
@@ -3170,7 +3781,7 @@ int bldr_strs_glob_opt(bldr_strings_t *strings, bldr_arena_t *arena,
         return BLDR_ERR_NOT_FOUND;
     }
 
-    BLDR_UNWRAP(bldr_strs_reserve(strings, strings->length + path_count));
+    BLDR_UNWRAP_ERROR(bldr_strs_reserve(strings, strings->length + path_count));
 
     char *buffer = bldr_arena_alloc(arena, total_size);
     BLDR_CHECK_NULLPTR(buffer);
@@ -3227,8 +3838,8 @@ int bldr_strs_walk_opt(bldr_strings_t *strings, bldr_arena_t *arena,
         .data = &walk_data,
     };
 
-    BLDR_UNWRAP(bldr_file_walk_opt(base_path, pattern, _bldr_strs_walk_callback,
-                                   walk_options));
+    BLDR_UNWRAP_ERROR(bldr_file_walk_opt(
+        base_path, pattern, _bldr_strs_walk_callback, walk_options));
     if (options.no_sort == false)
         bldr_strs_sort(strings);
 
@@ -3264,8 +3875,52 @@ static int _bldr_strs_walk_callback(const char *path, void *void_data) {
     char *copied_path = bldr_arena_strdup(data->arena, path);
 
     BLDR_CHECK_NULLPTR(copied_path);
-    BLDR_UNWRAP(bldr_strs_append(data->strings, copied_path));
+    BLDR_UNWRAP_ERROR(bldr_strs_append(data->strings, copied_path));
     return BLDR_OK;
+}
+
+/*
+ * Timer function implementations
+ */
+
+constexpr long _bldr_timer_min_sleep = 1000;  // 1ms minimum
+constexpr long _bldr_timer_max_sleep = 50000; // 50ms maximum
+
+int bldr_timer_init(bldr_timer_t *timer, long timeout_ms) {
+    memset(timer, 0, sizeof(*timer));
+    timer->timeout = (double)timeout_ms / 1000.0;
+    return BLDR_OK;
+}
+
+int bldr_timer_init_now(bldr_timer_t *timer, long timeout_ms) {
+    bldr_timer_init(timer, timeout_ms);
+    bldr_timer_start(timer);
+    return BLDR_OK;
+}
+
+int bldr_timer_sleep(bldr_timer_t *timer) {
+    double elapsed_time = bldr_time_now() - timer->start;
+
+    if (elapsed_time >= timer->timeout) {
+        return BLDR_ERR_TIMEOUT;
+    }
+    // For the last second, use shorter sleep intervals for
+    // responsiveness
+    if (elapsed_time >= timer->timeout - 1) {
+        timer->sleep = _bldr_timer_min_sleep;
+    }
+    // Sleep with adaptive interval (exponential backoff with cap)
+    usleep(timer->sleep);
+    // Gradually increase sleep time to reduce CPU usage with 1.5x
+    // multiplier
+    timer->sleep = MIN((timer->sleep * 3) / 2, _bldr_timer_max_sleep);
+
+    return BLDR_OK;
+}
+
+void bldr_timer_start(bldr_timer_t *timer) {
+    timer->start = bldr_time_now();
+    timer->sleep = _bldr_timer_min_sleep;
 }
 
 /*
@@ -3283,12 +3938,12 @@ static int _bldr_validate_platform_assumptions(void);
 int bldr_vmem_commit(bldr_vmem_t *vmem, size_t size) {
     if (size == 0)
         return BLDR_OK;
-    if (size > vmem->capacity)
-        BLDR_OOM_ERROR("requested size %zu larger than capacity %zu", size,
-                       vmem->capacity);
 
     size = bldr_page_align(size);
 
+    if (size > vmem->capacity)
+        BLDR_OOM_ERROR("requested size %zu larger than capacity %zu", size,
+                       vmem->capacity);
     if (SIZE_MAX - vmem->length < size)
         BLDR_OOM_ERROR("requested size %zu would overflow current length %zu",
                        size, vmem->length);
@@ -3304,7 +3959,7 @@ int bldr_vmem_commit(bldr_vmem_t *vmem, size_t size) {
     if (result != 0) {
         vmem->error = errno;
         BLDR_OOM_ERROR("failed to commit %zu bytes of virtual memory (%s)",
-                       size, strerror(errno));
+                       size, strerror(vmem->error));
     }
 
     vmem->length = new_length;
@@ -3313,13 +3968,10 @@ int bldr_vmem_commit(bldr_vmem_t *vmem, size_t size) {
 }
 
 int bldr_vmem_decommit(bldr_vmem_t *vmem, size_t size) {
-    assert(vmem != NULL);
-    if (size == 0) {
+    if (size == 0)
         return BLDR_OK;
-    }
 
     size = bldr_page_align(size);
-
     if (size > vmem->length)
         BLDR_OOM_ERROR("decommit of %zu bytes exceeds committed virtual "
                        "memory of %zu bytes",
@@ -3333,7 +3985,7 @@ int bldr_vmem_decommit(bldr_vmem_t *vmem, size_t size) {
         vmem->error = errno;
         BLDR_OOM_ERROR(
             "failed to decommit %zu bytes in virtual memory of %zu bytes (%s)",
-            size, vmem->length, strerror(errno));
+            size, vmem->length, strerror(vmem->error));
     }
 
     vmem->length = new_length;
@@ -3350,23 +4002,28 @@ void bldr_vmem_done(bldr_vmem_t *vmem) {
 
 int bldr_vmem_init(bldr_vmem_t *vmem, size_t capacity) {
     int result = _bldr_validate_platform_assumptions();
-    if (result != BLDR_OK) {
+    if (result != BLDR_OK)
         return result;
+
+    if (capacity == 0) {
+        bldr_log_error("capacity is zero");
+        return BLDR_ERR_ARGS;
     }
     if (capacity > SIZE_MAX - bldr_page_size()) {
-        BLDR_OOM_ERROR("capacity %zu too large for page alignment", capacity);
+        bldr_log_error("capacity %zu too large for page alignment", capacity);
+        return BLDR_ERR_ARGS;
     }
 
     const int mmap_flags = _bldr_get_platform_mmap_flags();
 
-    memset(vmem, 0, sizeof(bldr_vmem_t));
+    memset(vmem, 0, sizeof(*vmem));
     vmem->capacity = bldr_page_align(capacity);
     vmem->base = mmap(NULL, vmem->capacity, PROT_NONE, mmap_flags, -1, 0);
 
     if (vmem->base == MAP_FAILED) {
         vmem->error = errno;
         BLDR_OOM_ERROR("failed to reserve %zu bytes of virtual memory (%s)",
-                       capacity, strerror(errno));
+                       capacity, strerror(vmem->error));
     }
 
     vmem->original.base = vmem->base;
@@ -3440,7 +4097,7 @@ static int _bldr_validate_platform_assumptions(void) {
         // Verify page size is power of 2
         if ((page_size & (page_size - 1)) != 0) {
             bldr_log_error("page size %zu is not a power of 2", page_size);
-            return BLDR_ERR_SYNTAX;
+            return BLDR_ERR_PLATFORM;
         }
 
         // Warn about unusual page sizes
@@ -3471,11 +4128,14 @@ static int _bldr_validate_platform_assumptions(void) {
 #define BLDR_STRIP_PREFIX_ARRAY
 #define BLDR_STRIP_PREFIX_BUILDER
 #define BLDR_STRIP_PREFIX_COMMAND
+#define BLDR_STRIP_PREFIX_COMPILER
 #define BLDR_STRIP_PREFIX_DEFINES
+#define BLDR_STRIP_PREFIX_DEPENDENCIES
 #define BLDR_STRIP_PREFIX_LOGGER
 #define BLDR_STRIP_PREFIX_FILE
 #define BLDR_STRIP_PREFIX_PROCESS
 #define BLDR_STRIP_PREFIX_STRINGS
+#define BLDR_STRIP_PREFIX_TIMER
 #define BLDR_STRIP_PREFIX_VMEMORY
 #endif // BLDR_STRIP_PREFIX
 
@@ -3527,6 +4187,7 @@ static int _bldr_validate_platform_assumptions(void) {
 #define cmd_procs_append bldr_cmd_procs_append
 #define cmd_procs_append_many bldr_cmd_procs_append_many
 #define cmd_procs_done bldr_cmd_procs_done
+#define cmd_procs_sync bldr_cmd_procs_sync
 #define cmd_procs_wait bldr_cmd_procs_wait
 #define cmd_reserve bldr_cmd_reserve
 #define cmd_reset bldr_cmd_reset
@@ -3537,6 +4198,19 @@ static int _bldr_validate_platform_assumptions(void) {
 #define cmd_save bldr_cmd_save
 #define cmd_valid bldr_cmd_valid
 #endif // BLDR_STRIP_PREFIX_COMMAND
+
+#ifdef BLDR_STRIP_PREFIX_COMPILER
+#define CC_COMPILER BLDR_CC_COMPILER
+#define CC_FLAGS_COMMON BLDR_CC_FLAGS_COMMON
+#define CC_FLAGS_RELEASE BLDR_CC_FLAGS_RELEASE
+#define CC_FLAGS_DEBUG BLDR_CC_FLAGS_DEBUG
+#define CC_FLAGS_VALGRIND BLDR_CC_FLAGS_VALGRIND
+
+#define cc_compile_opt_t bldr_cc_compile_opt_t
+
+#define cc_compile bldr_cc_compile
+#define cc_compile_opt bldr_cc_compile_opt
+#endif
 
 #ifdef BLDR_STRIP_PREFIX_DEFINES
 #define ARENA_CAPACITY BLDR_ARENA_CAPACITY
@@ -3562,7 +4236,7 @@ static int _bldr_validate_platform_assumptions(void) {
 #define HANDLE_NULL BLDR_HANDLE_NULL
 #define OOM_ERROR BLDR_OOM_ERROR
 #define OOM_NULL BLDR_OOM_NULL
-#define UNWRAP BLDR_UNWRAP
+#define UNWRAP_ERROR BLDR_UNWRAP_ERROR
 #define UNWRAP_NULL BLDR_UNWRAP_NULL
 
 #define OK BLDR_OK
@@ -3600,7 +4274,7 @@ static int _bldr_validate_platform_assumptions(void) {
 
 #define EXIT_OK BLDR_EXIT_OK
 
-#define EXIT_REBUILD BLDR_EXIT_REBUILD
+#define EXIT_FAIL BLDR_EXIT_FAIL
 #define EXIT_NOMEM BLDR_EXIT_NOMEM
 #define EXIT_IO BLDR_EXIT_IO
 #define EXIT_RAND BLDR_EXIT_RAND
@@ -3628,6 +4302,24 @@ static int _bldr_validate_platform_assumptions(void) {
 #define system_align bldr_system_align
 #define time_now bldr_time_now
 #endif // BLDR_STRIP_PREFIX_DEFINES
+
+#ifdef BLDR_STRIP_PREFIX_DEPENDENCIES
+#define deps_t bldr_deps_t
+#define deps_read_opt_t bldr_deps_read_opt_t
+
+#define deps_append bldr_deps_append
+#define deps_append_many bldr_deps_append_many
+#define deps_done bldr_deps_done
+#define deps_needs_rebuild bldr_deps_needs_rebuild
+#define deps_needs_regen bldr_deps_needs_regen
+#define deps_read bldr_deps_read
+#define deps_read_opt bldr_deps_read_opt
+#define deps_reserve bldr_deps_reserve
+#define deps_reset bldr_deps_reset
+#define deps_resize bldr_deps_resize
+#define deps_rewind bldr_deps_rewind
+#define deps_save bldr_deps_save
+#endif // BLDR_STRIP_PREFIX_DEPENDENCIES
 
 #ifdef BLDR_STRIP_PREFIX_FILE
 #define file_cat_opt_t bldr_file_cat_opt_t
@@ -3718,6 +4410,15 @@ static int _bldr_validate_platform_assumptions(void) {
 #define strs_walk bldr_strs_walk
 #define strs_walk_opt bldr_strs_walk_opt
 #endif // BLDR_STRIP_PREFIX_STRINGS
+
+#ifdef BLDR_STRIP_PREFIX_TIMER
+#define timer_t bldr_timer_t
+
+#define timer_init bldr_timer_init
+#define timer_init_now bldr_timer_init_now
+#define timer_sleep bldr_timer_sleep
+#define timer_start bldr_timer_start
+#endif // BLDR_STRIP_PREFIX_TIMER
 
 #ifdef BLDR_STRIP_PREFIX_VMEMORY
 #define vmem_t bldr_vmem_t
