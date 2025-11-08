@@ -511,8 +511,6 @@ void bldr_log_time(bool local);
     bldr_proc_exec_async_opt(cmd, handle,                                      \
                              (bldr_proc_async_options_t){__VA_ARGS__})
 
-typedef struct bldr_cmd_t bldr_cmd_t;
-
 typedef struct bldr_proc_handle_t {
     int stdout_fd;
     int stderr_fd;
