@@ -60,14 +60,14 @@ static inline int bldr_array_resize(bldr_array_t *array, size_t item_size,
 
 static inline int bldr_cmd_append_many(bldr_cmd_t *cmd, size_t count,
                                        const char **items) {
-    assert(!cmd->sealed && !cmd->static_mem);
+    assert(!cmd->static_mem);
     BLDR_UNWRAP_ERROR(bldr_array_append_many((bldr_array_t *)cmd,
                                              sizeof(char *), count, items));
     return bldr_cmd_resize(cmd, cmd->length);
 }
 
 static inline void bldr_cmd_done(bldr_cmd_t *cmd) {
-    if (!cmd->static_mem)
+    if (cmd && !cmd->static_mem)
         bldr_array_done((bldr_array_t *)cmd);
 }
 
@@ -93,13 +93,13 @@ static inline int bldr_cmd_procs_append_many(bldr_cmd_procs_t *procs,
 }
 
 static inline int bldr_cmd_reserve(bldr_cmd_t *cmd, size_t requested) {
-    assert(!cmd->sealed && !cmd->static_mem);
+    assert(!cmd->static_mem);
     return bldr_array_reserve((bldr_array_t *)cmd, sizeof(char *),
                               requested + 1);
 }
 
 static inline int bldr_cmd_resize(bldr_cmd_t *cmd, size_t size) {
-    assert(!cmd->sealed && !cmd->static_mem);
+    assert(!cmd->static_mem);
 
     BLDR_UNWRAP_ERROR(
         bldr_array_reserve((bldr_array_t *)cmd, sizeof(char *), size + 1));

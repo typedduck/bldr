@@ -43,7 +43,6 @@ bldr_cmd_t *bldr_cmd_clone_in(const bldr_cmd_t *cmd, bldr_arena_t *arena) {
     cloned->items = (const char **)(data + array_offset);
     cloned->length = cmd->length;
     cloned->capacity = cmd->length + 1;
-    cloned->sealed = true;
     cloned->static_mem = true;
 
     // Copy strings and set up pointer array
@@ -64,6 +63,7 @@ bldr_cmd_t *bldr_cmd_clone_in(const bldr_cmd_t *cmd, bldr_arena_t *arena) {
 }
 
 void bldr_cmd_procs_done(bldr_cmd_procs_t *procs) {
+    BLDR_UNUSED(procs);
     BLDR_TODO("Implement bldr_cmd_procs_done");
 }
 
@@ -208,7 +208,7 @@ int bldr_cmd_run_opt(const bldr_cmd_t *cmd, bldr_cmd_options_t options) {
             bldr_proc_exec(cmd, NULL, .hook = options.hook, .log_command = true,
                            .log_stderr = true, .log_stdout = true,
                            .timeout_ms = options.timeout_ms,
-                                    .working_dir = options.working_dir);
+                           .working_dir = options.working_dir);
 
         return result;
     }

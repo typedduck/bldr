@@ -311,7 +311,6 @@ typedef struct bldr_cmd_t {
     const char **items;
     uint32_t length;
     uint32_t capacity;
-    bool sealed;
     bool static_mem;
 } bldr_cmd_t;
 
